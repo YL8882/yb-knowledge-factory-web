@@ -120,6 +120,55 @@ Project Management：
 
 ---
 
+## MVP v0.1
+
+Date
+
+2026-07-29
+
+Status
+
+Build Complete — Acceptance Test Passed
+
+### Added
+
+FastAPI Web Application（`app/`）：
+
+- 首頁 UI（YouTube URL 輸入框、Generate 按鈕）
+- YouTube URL 驗證與影片中繼資料擷取（yt-dlp，支援一般網址與 `/shorts/`）
+- Learning Queue（記憶體內，含新增／列表／移除／重複偵測）
+- Transcript 產生（yt-dlp + Faster Whisper），存成 `outputs/transcripts/`
+- Study Note 產生（Gemini 2.5 Flash），存成 `outputs/study_notes/`
+- Transcript.md／Study_Note.md 下載端點
+- `.env` 讀取 GEMINI_API_KEY（不寫入程式碼、不印出於 log）
+
+### Changed
+
+- `StudyNote_Output_Schema_v1.0.md` 更新為 v2.0，結構完全同步 `StudyNote_Template_v3.0.md`，
+  確立 Template 為 Study Note 輸出格式的唯一官方來源（Single Source of Truth）
+- README.md 更新為反映實際功能與安裝步驟
+
+### Fixed
+
+- Study Note Metadata 的 Tags 欄位一直空白，已修正為由 Gemini 產生標籤
+- Executive Summary（一句話摘要）未限制字數，已修正為 100 字內
+- References／延伸資訊未正確帶入影片標題與網址，已修正 Prompt 指示
+
+### Testing
+
+- 完成 MVP v0.1 驗收測試，詳見 `docs/MVP_Test_Report.md`
+- 完整流程（YouTube URL → Queue → Transcript → Study Note → 下載）：PASS
+- 錯誤情境（空白網址／無效網址／不存在影片／Gemini Key 未設定／Gemini 呼叫失敗）：PASS
+
+### Known Issues
+
+- anyio 版本相依性警告（`google-genai` 與 `fastapi==0.104.1` 的 anyio 版本要求衝突，
+  實測運作正常）
+- ffmpeg 未安裝警告（目前不影響功能）
+- Queue 僅存於記憶體，伺服器重啟後清空（Transcript／Study Note 檔案本身持久保存）
+
+---
+
 # Change Categories
 
 重大更新分類：

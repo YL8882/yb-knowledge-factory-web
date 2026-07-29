@@ -14,6 +14,7 @@ Related Documents:
   - CHANGELOG.md
   - Milestone_00_Project_Freeze.md
   - Product_Index.md
+  - MVP_Test_Report.md
 ---
 
 # Project Dashboard
@@ -47,7 +48,7 @@ Related Documents:
 | UI / UX Design | ✅ Complete |
 | Project Freeze | ✅ Complete |
 | Claude Code Development | 🔄 In Progress |
-| Testing | ⏳ Pending |
+| Testing | 🔄 In Progress（初次驗收已通過，待最終確認） |
 | MVP Release | ⏳ Pending |
 
 ---
@@ -172,6 +173,7 @@ Latest
 - Foundation Frozen
 - Milestone 00 Completed
 - Claude Code Implementation Started
+- MVP v0.1 Build Complete，驗收測試通過（見 MVP_Test_Report.md）
 
 See:
 
@@ -210,6 +212,7 @@ Project Success
 - Product_Index.md
 - CHANGELOG.md
 - Milestone_00_Project_Freeze.md
+- MVP_Test_Report.md
 
 ---
 

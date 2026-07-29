@@ -98,8 +98,37 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    async function generateStudyNote(videoId, button) {
+        button.disabled = true;
+        button.textContent = '產生中...';
+
+        try {
+            const response = await fetch('/api/queue/' + encodeURIComponent(videoId) + '/study-note', {
+                method: 'POST',
+            });
+            const data = await response.json();
+
+            if (!response.ok) {
+                showStatus(data.detail || 'Study Note 產生失敗', 'error');
+                await loadQueue();
+                return;
+            }
+
+            showStatus('Study Note 已產生', 'success');
+            await loadQueue();
+            showPreview(videoId, 'study-note', data.study_note);
+        } catch (error) {
+            showStatus('網路連線失敗', 'error');
+            await loadQueue();
+        }
+    }
+
     function showTranscriptPreview(videoId, text) {
-        const existing = document.querySelector('[data-transcript-for="' + videoId + '"]');
+        showPreview(videoId, 'transcript', text);
+    }
+
+    function showPreview(videoId, kind, text) {
+        const existing = document.querySelector('[data-preview-for="' + videoId + '-' + kind + '"]');
         if (existing) {
             existing.remove();
         }
@@ -111,7 +140,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const pre = document.createElement('pre');
         pre.className = 'transcript-preview';
-        pre.setAttribute('data-transcript-for', videoId);
+        pre.setAttribute('data-preview-for', videoId + '-' + kind);
         pre.textContent = text;
         li.appendChild(pre);
     }
@@ -151,12 +180,40 @@ document.addEventListener('DOMContentLoaded', function() {
             const actions = document.createElement('div');
             actions.className = 'queue-item-actions';
 
+            const hasTranscript = Boolean(item.transcript_path);
+            const hasStudyNote = Boolean(item.study_note_path);
+
             const transcriptBtn = document.createElement('button');
             transcriptBtn.className = 'queue-item-transcript';
-            transcriptBtn.textContent = item.status === 'Transcript Ready' ? '重新產生 Transcript' : '產生 Transcript';
+            transcriptBtn.textContent = hasTranscript ? '重新產生 Transcript' : '產生 Transcript';
             transcriptBtn.addEventListener('click', function() {
                 generateTranscript(item.video_id, transcriptBtn);
             });
+            actions.appendChild(transcriptBtn);
+
+            if (hasTranscript) {
+                const downloadTranscriptLink = document.createElement('a');
+                downloadTranscriptLink.className = 'queue-item-download';
+                downloadTranscriptLink.textContent = '下載 Transcript';
+                downloadTranscriptLink.href = '/api/queue/' + encodeURIComponent(item.video_id) + '/transcript/download';
+                actions.appendChild(downloadTranscriptLink);
+
+                const studyNoteBtn = document.createElement('button');
+                studyNoteBtn.className = 'queue-item-study-note';
+                studyNoteBtn.textContent = hasStudyNote ? '重新產生 Study Note' : '產生 Study Note';
+                studyNoteBtn.addEventListener('click', function() {
+                    generateStudyNote(item.video_id, studyNoteBtn);
+                });
+                actions.appendChild(studyNoteBtn);
+            }
+
+            if (hasStudyNote) {
+                const downloadStudyNoteLink = document.createElement('a');
+                downloadStudyNoteLink.className = 'queue-item-download';
+                downloadStudyNoteLink.textContent = '下載 Study Note';
+                downloadStudyNoteLink.href = '/api/queue/' + encodeURIComponent(item.video_id) + '/study-note/download';
+                actions.appendChild(downloadStudyNoteLink);
+            }
 
             const removeBtn = document.createElement('button');
             removeBtn.className = 'queue-item-remove';
@@ -164,8 +221,6 @@ document.addEventListener('DOMContentLoaded', function() {
             removeBtn.addEventListener('click', function() {
                 removeFromQueue(item.video_id);
             });
-
-            actions.appendChild(transcriptBtn);
             actions.appendChild(removeBtn);
 
             row.appendChild(info);

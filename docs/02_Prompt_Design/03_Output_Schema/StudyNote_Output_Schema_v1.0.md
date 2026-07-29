@@ -1,9 +1,9 @@
 # StudyNote Output Schema
 
-**Document Version:** v1.0 (Final)  
-**Document Type:** Output Schema Specification  
-**Module:** 02_Prompt_Design / 03_Output_Schemas  
-**Product:** YB Knowledge Factory MVP v0.1  
+**Document Version:** v2.0 (Final)
+**Document Type:** Output Schema Specification
+**Module:** 02_Prompt_Design / 03_Output_Schema
+**Product:** YB Knowledge Factory MVP v0.1
 **Status:** Final
 
 ---
@@ -12,7 +12,18 @@
 
 本文件定義 **Study Note** 的官方輸出結構（Output Schema）。
 
-Output Schema 是 Study Note 的標準資料契約（Data Contract），規範所有 AI 模型必須遵循的輸出格式，以確保：
+自 v2.0 起，本文件之輸出結構**完全同步**於：
+
+```text
+docs/04_Templates/StudyNote_Template_v3.0.md
+```
+
+`StudyNote_Template_v3.0.md` 為 Study Note 輸出格式的**唯一官方格式（Single Source of
+Truth）**。本文件僅將該 Template 轉譯為適用於 AI 模型（Gemini、Claude Code 等）的
+Output Schema 描述，不得與 Template 產生結構差異。若兩者未來出現不一致，應以
+Template 為準並回頭修正本文件。
+
+Output Schema 規範所有 AI 模型必須遵循的輸出格式，以確保：
 
 - 結構一致
 - 品質一致
@@ -45,7 +56,7 @@ Output Schema 是 Study Note 的標準資料契約（Data Contract），規範�
 Study Note 必須符合以下原則：
 
 - Markdown 格式
-- 結構固定
+- 結構固定，與 `StudyNote_Template_v3.0.md` 完全一致
 - 易閱讀
 - 易搜尋
 - 易維護
@@ -59,234 +70,154 @@ Study Note 必須符合以下原則：
 Study Note 應依照以下固定章節輸出：
 
 ```text
-Metadata
+{{影片名}}（標題）
 │
-├── Executive Summary
+├── 影片網址
 │
-├── Key Takeaways
+├── 一句話摘要
 │
-├── Detailed Notes
+├── 重點摘要
 │
-├── Core Concepts
+├── 重點解析
+│   └── 主題一、主題二、主題三……
 │
-├── Workflow
+├── 操作流程
+│   └── Step 1、Step 2、Step 3……
 │
-├── Tools
-│
-├── Best Practices
-│
-├── Key Decisions
-│
-├── Future Research
-│
-└── References
+└── 延伸資訊
+    ├── 關鍵字（Keywords）
+    ├── Tags
+    └── 延伸研究
 ```
 
 不得新增、刪除或重新排列章節。
 
 ---
 
-# 5. Metadata Schema
+# 5. 標題與影片網址
 
-文件開頭必須包含 Metadata：
+文件開頭直接以影片名稱作為標題，並列出影片網址，格式如下：
 
 ```markdown
-# Study Note
+# {{影片名}}
 
-Title:
-
-Source:
-
-Author:
-
-Date:
-
-Language:
-
-Tags:
-
-Version:
+**影片網址：**
+{{影片網址}}
 ```
 
-Metadata 主要供：
-
-- Obsidian
-- Search
-- Workflow
-- AI Retrieval
-
-使用。
+本 Schema 不使用獨立的 Metadata 區塊（不包含 Author / Date / Language / Tags /
+Version 等欄位）；影片名稱與網址即為文件唯一必要的來源資訊。
 
 ---
 
-# 6. Executive Summary
+# 6. 一句話摘要
 
 目的：
 
-一句話說明影片核心內容。
+100 字內說明本影片最重要的核心內容，讓讀者快速了解影片大意。
 
-建議：
+規則：
 
-1～3 段。
-
-避免細節。
+- 僅寫一段。
+- 不分點。
+- 不超過 100 字（繁體中文字數）。
+- 避免細節，聚焦核心重點。
 
 ---
 
-# 7. Key Takeaways
+# 7. 重點摘要
 
 列出最重要重點。
 
-建議：
+規則：
 
-5～15 點。
-
-每點一句。
+- 使用條列式（Bullet List）。
+- 建議 5 點左右。
+- 每點一句，避免展開說明。
 
 ---
 
-# 8. Detailed Notes
+# 8. 重點解析
 
-Study Note 主體。
+Study Note 主體，依主題重新組織內容，不得依照逐字稿原始順序排列。
 
-依照主題重新組織。
-
-不得依照逐字稿順序。
-
-可使用：
+格式：
 
 ```markdown
-## 主題
+## 主題一（或 00:00－xx:xx）
 
-### 子主題
+- 重點
+- 重點
 
+---
+
+## 主題二（或 xx:xx－xx:xx）
+
+- 重點
 - 重點
 ```
 
----
-
-# 9. Core Concepts
-
-整理：
-
-- 定義
-- 名詞
-- 架構
-- Framework
-
-例如：
-
-| Concept | Description |
-|----------|-------------|
-| Agent | ... |
+主題數量依影片內容彈性增減，每個主題之間以 `---` 分隔。
 
 ---
 
-# 10. Workflow
+# 9. 操作流程
 
-若影片包含流程：
+若影片包含明確操作流程或步驟，依序使用：
 
-使用：
+```markdown
+### Step 1
 
-```text
-Input
+...
 
-↓
+### Step 2
 
-Process
-
-↓
-
-Output
+...
 ```
 
-若無流程：
+若影片沒有明確操作流程，整段內容填寫：
 
-可省略內容，但保留章節。
+```text
+本影片無明確操作流程。
+```
 
----
-
-# 11. Tools
-
-整理：
-
-- Tool
-- Model
-- Framework
-- Library
-
-建議格式：
-
-| Tool | Purpose |
-|------|----------|
+不得省略本章節標題。
 
 ---
 
-# 12. Best Practices
+# 10. 延伸資訊
 
-整理：
+包含三個固定子章節，缺一不可：
 
-作者提出：
+## 關鍵字（Keywords）
 
-- 建議
-- 經驗
-- 注意事項
+列出影片重要關鍵字或名詞，使用條列式。
 
-使用條列。
+## Tags
 
----
+列出 Hashtag 形式標籤，例如：
 
-# 13. Key Decisions
+```markdown
+- #AI
+- #VibeCoding
+- #ClaudeCode
+```
 
-整理：
+## 延伸研究
 
-作者的重要判斷。
+列出值得延伸研究的主題、技術、工具或商業觀點，使用條列式。
 
-例如：
-
-- 為什麼不用某工具
-- 為什麼採某 Workflow
-
----
-
-# 14. Future Research
-
-列出：
-
-值得延伸研究：
-
-- 技術
-- Prompt
-- Tool
-- Framework
-- Business
+若某子章節無對應內容，仍須保留標題並註明「本影片未提及」。
 
 ---
 
-# 15. References
-
-至少包含：
-
-- Video Title
-- Video URL
-
-若有：
-
-- 官方網站
-- GitHub
-- Paper
-
-亦可整理。
-
----
-
-# 16. Markdown Rules
+# 11. Markdown Rules
 
 允許：
 
-- #
-- ##
-- ###
+- `#`
+- `##`
+- `###`
 - Bullet List
 - Number List
 - Table
@@ -302,43 +233,38 @@ Output
 
 ---
 
-# 17. Naming Rules
+# 12. Naming Rules
 
-章節名稱固定。
-
-例如：
+章節名稱固定，須與下列名稱完全一致：
 
 ```text
-Executive Summary
+{{影片名}}
 
-Key Takeaways
+影片網址
 
-Detailed Notes
+一句話摘要
 
-Core Concepts
+重點摘要
 
-Workflow
+重點解析
 
-Tools
+操作流程
 
-Best Practices
-
-Key Decisions
-
-Future Research
-
-References
+延伸資訊
+├── 關鍵字（Keywords）
+├── Tags
+└── 延伸研究
 ```
 
-不得自行改名。
+不得自行改名、翻譯或調整順序。
 
 ---
 
-# 18. Quality Requirements
+# 13. Quality Requirements
 
 Study Note 應符合：
 
-✓ 結構一致
+✓ 結構與 `StudyNote_Template_v3.0.md` 完全一致
 
 ✓ Markdown 正確
 
@@ -354,20 +280,25 @@ Study Note 應符合：
 
 ---
 
-# 19. Validation Checklist
+# 14. Validation Checklist
 
 輸出完成後應確認：
 
-- Metadata 完整
-- 所有章節存在
+- 標題為影片名稱
+- 影片網址存在
+- 一句話摘要不超過 100 字
+- 重點摘要存在
+- 重點解析依主題分段
+- 操作流程存在（無流程時已填寫替代文字）
+- 延伸資訊包含關鍵字、Tags、延伸研究三個子章節
 - Markdown 正確
-- 無空章節（若無內容可註明「本影片未提及」）
+- 無空章節（若無內容須註明「本影片未提及」）
 - 無杜撰內容
 - 無重複內容
 
 ---
 
-# 20. Dependencies
+# 15. Dependencies
 
 本 Schema 由以下文件共同組成：
 
@@ -384,7 +315,7 @@ StudyNote_Task_Prompt_v1.0.md
 
 ↓
 
-StudyNote_Output_Schema_v1.0.md
+StudyNote_Output_Schema_v1.0.md（本文件，結構同步自 04_Templates/StudyNote_Template_v3.0.md）
 
 ↓
 
@@ -393,7 +324,7 @@ Study_Note.md
 
 ---
 
-# 21. Future Compatibility
+# 16. Future Compatibility
 
 本 Schema 應支援：
 
@@ -404,15 +335,15 @@ Study_Note.md
 - Course Builder
 - AI Product Builder
 
-所有後續 AI Workflow 均應以本 Schema 作為輸入來源。
+所有後續 AI Workflow 均應以本 Schema（即 `StudyNote_Template_v3.0.md`）作為輸入來源。
 
 ---
 
-# 22. Version Policy
+# 17. Version Policy
 
 版本管理：
 
-- Major：Schema 結構重大變更
+- Major：Schema 結構重大變更，或與 Template 同步時的結構調整
 - Minor：新增章節或欄位
 - Patch：文字修正與說明優化
 
@@ -432,8 +363,11 @@ Study_Note.md
 ├── 02_Task_Prompts/
 │   └── StudyNote_Task_Prompt_v1.0.md
 │
-└── 03_Output_Schemas/
-    └── StudyNote_Output_Schema_v1.0.md
+└── 03_Output_Schema/
+    └── StudyNote_Output_Schema_v1.0.md（本文件）
+
+04_Templates/
+└── StudyNote_Template_v3.0.md（唯一官方格式 / Single Source of Truth）
 ```
 
 ---
@@ -443,6 +377,6 @@ Study_Note.md
 | Item | Value |
 |------|-------|
 | Document | StudyNote Output Schema |
-| Version | v1.0 (Final) |
+| Version | v2.0 (Final) |
 | Product | YB Knowledge Factory MVP v0.1 |
-| Status | ✅ Final |
+| Status | ✅ Final — Synced with StudyNote_Template_v3.0.md |

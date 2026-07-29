@@ -2,14 +2,19 @@ import shutil
 import tempfile
 from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import gemini_client
 import queue_store
+import study_note
 import transcript as transcript_service
 import youtube
+
+load_dotenv()
 
 app = FastAPI()
 
@@ -102,6 +107,94 @@ def generate_transcript(video_id: str):
         "transcript": text,
         "file_path": str(output_path),
     }
+
+
+@app.post("/api/queue/{video_id}/study-note")
+def generate_study_note(video_id: str):
+    try:
+        item = queue_store.get_item(video_id)
+    except queue_store.QueueItemNotFoundError:
+        raise HTTPException(status_code=404, detail="項目不存在")
+
+    transcript_path = item.get("transcript_path")
+    if not transcript_path:
+        raise HTTPException(status_code=400, detail="請先產生 Transcript")
+
+    try:
+        transcript_content = study_note.read_transcript(transcript_path)
+    except study_note.TranscriptNotFoundError:
+        raise HTTPException(status_code=404, detail="Transcript 檔案不存在")
+
+    transcript_body = study_note.extract_transcript_body(transcript_content)
+
+    queue_store.update_item(video_id, status="Generating")
+
+    try:
+        result = gemini_client.generate_study_note_body(
+            title=item["title"], url=item["url"], transcript_text=transcript_body
+        )
+    except gemini_client.GeminiConfigError as exc:
+        queue_store.update_item(video_id, status="Transcript Ready")
+        raise HTTPException(status_code=500, detail=str(exc))
+    except gemini_client.GeminiGenerationError as exc:
+        queue_store.update_item(video_id, status="Transcript Ready")
+        raise HTTPException(status_code=500, detail=f"Study Note 產生失敗: {exc}")
+
+    output_path = study_note.save_study_note(
+        video_id=video_id,
+        title=item["title"],
+        url=item["url"],
+        body=result["body"],
+        tags=result["tags"],
+    )
+
+    queue_store.update_item(
+        video_id, status="Study Note Ready", study_note_path=str(output_path)
+    )
+
+    return {
+        "video_id": video_id,
+        "status": "Study Note Ready",
+        "study_note": output_path.read_text(encoding="utf-8"),
+        "file_path": str(output_path),
+    }
+
+
+@app.get("/api/queue/{video_id}/transcript/download")
+async def download_transcript(video_id: str):
+    try:
+        item = queue_store.get_item(video_id)
+    except queue_store.QueueItemNotFoundError:
+        raise HTTPException(status_code=404, detail="項目不存在")
+
+    transcript_path = item.get("transcript_path")
+    if not transcript_path or not Path(transcript_path).exists():
+        raise HTTPException(status_code=404, detail="Transcript 檔案不存在")
+
+    return FileResponse(
+        transcript_path,
+        media_type="text/markdown",
+        filename=Path(transcript_path).name,
+    )
+
+
+@app.get("/api/queue/{video_id}/study-note/download")
+async def download_study_note(video_id: str):
+    try:
+        item = queue_store.get_item(video_id)
+    except queue_store.QueueItemNotFoundError:
+        raise HTTPException(status_code=404, detail="項目不存在")
+
+    study_note_path = item.get("study_note_path")
+    if not study_note_path or not Path(study_note_path).exists():
+        raise HTTPException(status_code=404, detail="Study Note 檔案不存在")
+
+    return FileResponse(
+        study_note_path,
+        media_type="text/markdown",
+        filename=Path(study_note_path).name,
+    )
+
 
 if __name__ == "__main__":
     import uvicorn
