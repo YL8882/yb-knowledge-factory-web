@@ -40,6 +40,19 @@ def list_items() -> list[dict]:
     return sorted(_queue, key=lambda item: item["created_at"], reverse=True)
 
 
+def get_item(video_id: str) -> dict:
+    for item in _queue:
+        if item["video_id"] == video_id:
+            return item
+    raise QueueItemNotFoundError(f"Item not found in queue: {video_id}")
+
+
+def update_item(video_id: str, **fields) -> dict:
+    item = get_item(video_id)
+    item.update(fields)
+    return item
+
+
 def remove_item(video_id: str) -> None:
     for i, item in enumerate(_queue):
         if item["video_id"] == video_id:

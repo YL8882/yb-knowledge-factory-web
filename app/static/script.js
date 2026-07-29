@@ -73,6 +73,49 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    async function generateTranscript(videoId, button) {
+        button.disabled = true;
+        button.textContent = '產生中...';
+
+        try {
+            const response = await fetch('/api/queue/' + encodeURIComponent(videoId) + '/transcript', {
+                method: 'POST',
+            });
+            const data = await response.json();
+
+            if (!response.ok) {
+                showStatus(data.detail || 'Transcript 產生失敗', 'error');
+                await loadQueue();
+                return;
+            }
+
+            showStatus('Transcript 已產生', 'success');
+            await loadQueue();
+            showTranscriptPreview(videoId, data.transcript);
+        } catch (error) {
+            showStatus('網路連線失敗', 'error');
+            await loadQueue();
+        }
+    }
+
+    function showTranscriptPreview(videoId, text) {
+        const existing = document.querySelector('[data-transcript-for="' + videoId + '"]');
+        if (existing) {
+            existing.remove();
+        }
+
+        const li = document.querySelector('[data-video-id="' + videoId + '"]');
+        if (!li) {
+            return;
+        }
+
+        const pre = document.createElement('pre');
+        pre.className = 'transcript-preview';
+        pre.setAttribute('data-transcript-for', videoId);
+        pre.textContent = text;
+        li.appendChild(pre);
+    }
+
     function renderQueue(items) {
         queueList.innerHTML = '';
 
@@ -86,6 +129,10 @@ document.addEventListener('DOMContentLoaded', function() {
         items.forEach(function(item) {
             const li = document.createElement('li');
             li.className = 'queue-item';
+            li.setAttribute('data-video-id', item.video_id);
+
+            const row = document.createElement('div');
+            row.className = 'queue-item-row';
 
             const info = document.createElement('div');
             info.className = 'queue-item-info';
@@ -101,6 +148,16 @@ document.addEventListener('DOMContentLoaded', function() {
             info.appendChild(title);
             info.appendChild(status);
 
+            const actions = document.createElement('div');
+            actions.className = 'queue-item-actions';
+
+            const transcriptBtn = document.createElement('button');
+            transcriptBtn.className = 'queue-item-transcript';
+            transcriptBtn.textContent = item.status === 'Transcript Ready' ? '重新產生 Transcript' : '產生 Transcript';
+            transcriptBtn.addEventListener('click', function() {
+                generateTranscript(item.video_id, transcriptBtn);
+            });
+
             const removeBtn = document.createElement('button');
             removeBtn.className = 'queue-item-remove';
             removeBtn.textContent = '移除';
@@ -108,8 +165,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 removeFromQueue(item.video_id);
             });
 
-            li.appendChild(info);
-            li.appendChild(removeBtn);
+            actions.appendChild(transcriptBtn);
+            actions.appendChild(removeBtn);
+
+            row.appendChild(info);
+            row.appendChild(actions);
+            li.appendChild(row);
             queueList.appendChild(li);
         });
     }

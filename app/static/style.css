@@ -164,13 +164,56 @@ main {
 }
 
 .queue-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
     padding: 14px 16px;
     border: 1px solid #e0e6ed;
     border-radius: 6px;
     background: #fafbfc;
+}
+
+.queue-item-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+.queue-item-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.queue-item-transcript {
+    background: none;
+    border: 1px solid #3498db;
+    color: #3498db;
+    cursor: pointer;
+    font-size: 0.9em;
+    padding: 6px 12px;
+    border-radius: 4px;
+    transition: background 0.2s ease;
+    white-space: nowrap;
+}
+
+.queue-item-transcript:hover {
+    background: #d6eaf8;
+}
+
+.queue-item-transcript:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.transcript-preview {
+    margin-top: 12px;
+    padding: 12px;
+    background: #2c3e50;
+    color: #ecf0f1;
+    border-radius: 6px;
+    font-size: 0.85em;
+    white-space: pre-wrap;
+    max-height: 300px;
+    overflow-y: auto;
 }
 
 .queue-item-info {

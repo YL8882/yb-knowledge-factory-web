@@ -1,10 +1,14 @@
+import shutil
+import tempfile
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from pathlib import Path
 from pydantic import BaseModel
 
 import queue_store
+import transcript as transcript_service
 import youtube
 
 app = FastAPI()
@@ -63,6 +67,41 @@ async def remove_from_queue(video_id: str):
     except queue_store.QueueItemNotFoundError:
         raise HTTPException(status_code=404, detail="項目不存在")
     return {"status": "removed"}
+
+
+@app.post("/api/queue/{video_id}/transcript")
+def generate_transcript(video_id: str):
+    try:
+        item = queue_store.get_item(video_id)
+    except queue_store.QueueItemNotFoundError:
+        raise HTTPException(status_code=404, detail="項目不存在")
+
+    queue_store.update_item(video_id, status="Transcribing")
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="ybkf_"))
+    try:
+        audio_path = transcript_service.download_audio(video_id, tmp_dir)
+        text = transcript_service.transcribe_audio(audio_path)
+    except (transcript_service.AudioDownloadError, transcript_service.TranscriptionError) as exc:
+        queue_store.update_item(video_id, status="Queued")
+        raise HTTPException(status_code=500, detail=f"Transcript 產生失敗: {exc}")
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    output_path = transcript_service.save_transcript(
+        video_id=video_id, title=item["title"], url=item["url"], transcript_text=text
+    )
+
+    queue_store.update_item(
+        video_id, status="Transcript Ready", transcript_path=str(output_path)
+    )
+
+    return {
+        "video_id": video_id,
+        "status": "Transcript Ready",
+        "transcript": text,
+        "file_path": str(output_path),
+    }
 
 if __name__ == "__main__":
     import uvicorn
