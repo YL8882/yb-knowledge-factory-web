@@ -30,6 +30,17 @@ def extract_transcript_body(transcript_content: str) -> str:
     return transcript_content[idx + len(_TRANSCRIPT_MARKER):].strip()
 
 
+def find_cached_study_note(video_id: str) -> Path | None:
+    """Processing cache lookup: find an existing Study_Note.md already on disk for
+    this video_id (matched by the `_{video_id}.md` filename suffix), so callers can
+    reuse it instead of calling Gemini again.
+    """
+    matches = sorted(
+        OUTPUT_DIR.glob(f"*_{video_id}.md"), key=lambda p: p.stat().st_mtime, reverse=True
+    )
+    return matches[0] if matches else None
+
+
 def build_metadata_block(title: str, url: str, tags: str = "") -> str:
     generated_date = date.today().isoformat()
     return (
@@ -48,7 +59,7 @@ def save_study_note(video_id: str, title: str, url: str, body: str, tags: str = 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     safe_title = _sanitize_filename(title)
-    output_path = OUTPUT_DIR / f"{safe_title}_{video_id}.md"
+    output_path = OUTPUT_DIR / f"SN_{safe_title}_{video_id}.md"
 
     metadata = build_metadata_block(title, url, tags)
     content = f"{metadata}\n---\n\n{body}\n"

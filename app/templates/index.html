@@ -9,6 +9,7 @@
 <body>
     <div class="container">
         <header>
+            <div class="header-icon" aria-hidden="true">▶</div>
             <h1>YB Knowledge Factory</h1>
             <p class="subtitle">YouTube 逐字稿 & 學習筆記產生器</p>
         </header>
@@ -16,20 +17,38 @@
         <main>
             <div class="input-section">
                 <label for="youtube-url">YouTube 網址</label>
-                <input
-                    type="text"
-                    id="youtube-url"
-                    placeholder="貼上 YouTube 網址，例如: https://www.youtube.com/watch?v=..."
-                    aria-label="YouTube URL input"
-                >
+                <div class="input-with-icon">
+                    <span class="input-icon" aria-hidden="true">🔗</span>
+                    <input
+                        type="text"
+                        id="youtube-url"
+                        placeholder="https://www.youtube.com/watch?v=..."
+                        aria-label="YouTube URL input"
+                    >
+                </div>
             </div>
 
-            <button id="generate-btn" class="btn-primary">Generate</button>
+            <button id="generate-btn" class="btn-primary">
+                <span aria-hidden="true">▶</span>
+                <span>Generate</span>
+            </button>
 
             <div id="status" class="status-hidden"></div>
 
+            <div id="processing-panel" class="processing-panel is-hidden">
+                <ol id="processing-stages" class="processing-stages"></ol>
+                <p id="processing-result" class="processing-result"></p>
+            </div>
+
             <section class="queue-section">
-                <h2>Learning Queue</h2>
+                <div class="queue-section-header">
+                    <h2>暫存區</h2>
+                    <div class="queue-section-header-actions">
+                        <a href="/history" class="btn-text-link">🕘 歷史記錄</a>
+                        <button id="choose-folder-btn" class="btn-text-link" type="button">📁 設定下載資料夾</button>
+                    </div>
+                </div>
+                <p id="download-folder-label" class="download-folder-label"></p>
                 <ul id="queue-list" class="queue-list"></ul>
                 <p id="queue-empty" class="queue-empty">尚無項目</p>
             </section>

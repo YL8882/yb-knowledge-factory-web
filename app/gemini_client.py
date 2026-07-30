@@ -103,6 +103,15 @@ Metadata 區塊（Title / Source / Author / Date / Language / Version）。
 不得因為逐字稿本身沒有提及而省略或標註「本影片未提及」。
 """
 
+_QUICK_SUMMARY_SYSTEM_INSTRUCTION = """\
+你是 StudyNote AI。請用台灣繁體中文，以一句話（100 字以內、僅一段、不分點）\
+說明這部影片最重要的核心重點，讓讀者能快速了解影片大意。
+
+只根據使用者提供的影片標題與逐字稿內容作答，不得杜撰、不得補充未提及的資訊。
+
+只輸出這一句話，不要輸出標題、章節名稱、標點以外的其他格式。
+"""
+
 _client: genai.Client | None = None
 
 
@@ -151,6 +160,35 @@ def generate_study_note_body(title: str, url: str, transcript_text: str) -> dict
         raise GeminiGenerationError("Gemini 未回傳有效內容")
 
     return _split_tags_and_body(text.strip())
+
+
+def generate_quick_summary(title: str, url: str, transcript_text: str) -> str:
+    client = _get_client()
+
+    prompt = (
+        f"影片標題：{title}\n"
+        f"影片網址：{url}\n\n"
+        "Transcript：\n"
+        f"{transcript_text}\n\n"
+        "請根據以上 Transcript，用一句話說明這部影片最重要的核心重點。"
+    )
+
+    try:
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=_QUICK_SUMMARY_SYSTEM_INSTRUCTION,
+            ),
+        )
+    except Exception as exc:
+        raise GeminiGenerationError(str(exc)) from exc
+
+    text = getattr(response, "text", None)
+    if not text:
+        raise GeminiGenerationError("Gemini 未回傳有效內容")
+
+    return text.strip()
 
 
 def _split_tags_and_body(text: str) -> dict:

@@ -2,5 +2,6 @@ fastapi==0.104.1
 uvicorn[standard]==0.24.0
 yt-dlp
 faster-whisper
+opencc-python-reimplemented
 google-genai
 python-dotenv

@@ -3,12 +3,23 @@ from pathlib import Path
 
 import yt_dlp
 from faster_whisper import WhisperModel
+from opencc import OpenCC
 
 OUTPUT_DIR = Path(__file__).parent.parent / "outputs" / "transcripts"
 
 _INVALID_FILENAME_CHARS = re.compile(r'[\\/:*?"<>|]')
+_SUMMARY_MARKER = "## Summary"
+_TRANSCRIPT_MARKER = "## Transcript"
 
 _model: WhisperModel | None = None
+_traditional_converter: OpenCC | None = None
+
+
+def _get_traditional_converter() -> OpenCC:
+    global _traditional_converter
+    if _traditional_converter is None:
+        _traditional_converter = OpenCC("s2twp")
+    return _traditional_converter
 
 
 class AudioDownloadError(Exception):
@@ -57,8 +68,12 @@ def transcribe_audio(audio_path: Path) -> str:
         model = _get_model()
         segments, _info = model.transcribe(str(audio_path))
         text = "".join(segment.text for segment in segments).strip()
+        text = _get_traditional_converter().convert(text)
     except Exception as exc:
         raise TranscriptionError(str(exc)) from exc
+
+    if not text.strip():
+        raise TranscriptionError("empty transcript")
 
     return text
 
@@ -67,17 +82,48 @@ def _sanitize_filename(name: str) -> str:
     return _INVALID_FILENAME_CHARS.sub("_", name).strip()
 
 
-def save_transcript(video_id: str, title: str, url: str, transcript_text: str) -> Path:
+def find_cached_transcript(video_id: str) -> Path | None:
+    """Processing cache lookup: find an existing Transcript.md already on disk for
+    this video_id (matched by the `_{video_id}.md` filename suffix, not by title, so
+    it still matches even if the fetched title text has since changed slightly),
+    so callers can reuse it instead of re-downloading audio and re-running Whisper.
+    """
+    matches = sorted(
+        OUTPUT_DIR.glob(f"*_{video_id}.md"), key=lambda p: p.stat().st_mtime, reverse=True
+    )
+    return matches[0] if matches else None
+
+
+def extract_summary(transcript_content: str) -> str:
+    """Reads the one-sentence summary back out of a saved Transcript.md — the
+    Transcript file is the single source of truth for it, so a cache hit never
+    needs to call Gemini again to get it. Returns "" if the file predates this
+    field (no "## Summary" section) so the caller can fall back to generating one.
+    """
+    start = transcript_content.find(_SUMMARY_MARKER)
+    if start == -1:
+        return ""
+    start += len(_SUMMARY_MARKER)
+    end = transcript_content.find(_TRANSCRIPT_MARKER, start)
+    section = transcript_content[start:end] if end != -1 else transcript_content[start:]
+    return section.strip()
+
+
+def save_transcript(video_id: str, title: str, url: str, transcript_text: str, summary: str = "") -> Path:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     safe_title = _sanitize_filename(title)
-    output_path = OUTPUT_DIR / f"{safe_title}_{video_id}.md"
+    output_path = OUTPUT_DIR / f"TN_{safe_title}_{video_id}.md"
 
     content = (
         f"# {title}\n"
         f"{url}\n"
         "\n"
         "---\n"
+        "\n"
+        "## Summary\n"
+        "\n"
+        f"{summary}\n"
         "\n"
         "## Transcript\n"
         "\n"
