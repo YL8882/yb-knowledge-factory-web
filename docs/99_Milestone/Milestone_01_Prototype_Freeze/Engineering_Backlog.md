@@ -6,14 +6,14 @@ Document: Engineering_Backlog
 Category: Development Planning
 Purpose: Engineering Task Management
 Priority: Critical
-Last Updated: 2026-07-28
+Last Updated: 2026-07-30
 ---
 
 # Engineering Backlog
 
 ## Current Milestone
 
-Milestone 02 – Engineering MVP
+Milestone 02 – Engineering MVP（✅ Complete，見 `docs/MVP_Test_Report.md`）
 
 ---
 
@@ -21,12 +21,12 @@ Milestone 02 – Engineering MVP
 
 | Status | Task |
 |---------|------|
-| ☐ | YouTube URL Validation |
-| ☐ | YouTube Downloader (yt-dlp) |
-| ☐ | Transcript Generator (Whisper) |
-| ☐ | Study Note Generator (Gemini) |
-| ☐ | Markdown Export |
-| ☐ | Runtime File Storage |
+| ☑ | YouTube URL Validation |
+| ☑ | YouTube Downloader (yt-dlp) |
+| ☑ | Transcript Generator (Whisper) |
+| ☑ | Study Note Generator (Gemini) |
+| ☑ | Markdown Export |
+| ☑ | Runtime File Storage |
 
 ---
 
@@ -34,10 +34,10 @@ Milestone 02 – Engineering MVP
 
 | Status | Task |
 |---------|------|
-| ☐ | Queue Management |
-| ☐ | Processing Status |
-| ☐ | Download Manager |
-| ☐ | Error Handling |
+| ☑ | Queue Management |
+| ☑ | Processing Status |
+| ☑ | Download Manager |
+| ☑ | Error Handling |
 | ☐ | Logging |
 
 ---

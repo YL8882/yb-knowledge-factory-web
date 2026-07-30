@@ -189,5 +189,3 @@ See:
 - Workflow_Specification.md
 - Technical_Decision.md
 - Wireframe_Specification.md
-- Implementation_Guide.md
-- Documentation_Standard.md

@@ -8,7 +8,7 @@ Purpose: Provide a real-time overview of the current project status, milestones,
 Scope: YB Knowledge Factory MVP v0.1
 Priority: Critical
 Author: ChatGPT
-Last Updated: 2026-07-29
+Last Updated: 2026-07-30
 Related Documents:
   - Development_Operating_System.md
   - CHANGELOG.md
@@ -29,11 +29,11 @@ Related Documents:
 |------|--------|
 | Product | YB Knowledge Factory MVP |
 | Version | v0.1 |
-| Current Phase | 🚀 Implementation |
+| Current Phase | ✅ MVP Build Complete（待 Product Owner 最終驗收確認） |
 | Foundation | ✅ Frozen |
 | Architecture | ✅ Frozen |
 | Specification | ✅ Frozen |
-| Current Milestone | Milestone 01 |
+| Current Milestone | Milestone 02（Build MVP v0.1） |
 | Project Status | Active Development |
 
 ---
@@ -47,7 +47,7 @@ Related Documents:
 | Specification Design | ✅ Complete |
 | UI / UX Design | ✅ Complete |
 | Project Freeze | ✅ Complete |
-| Claude Code Development | 🔄 In Progress |
+| Claude Code Development | ✅ Complete |
 | Testing | 🔄 In Progress（初次驗收已通過，待最終確認） |
 | MVP Release | ⏳ Pending |
 
@@ -55,22 +55,22 @@ Related Documents:
 
 # Current Milestone
 
-## Milestone 01
+## Milestone 02
 
 **Build MVP v0.1**
 
 Current Status
 
-🔄 In Progress
+✅ Complete（待 Product Owner 最終驗收確認，見 `docs/MVP_Test_Report.md`）
 
 Objectives
 
-- 建立首頁
-- YouTube URL Input
-- Video Metadata
-- Transcript
-- Study Note
-- Markdown Export
+- 建立首頁 ✅
+- YouTube URL Input ✅
+- Video Metadata ✅
+- Transcript ✅
+- Study Note ✅
+- Markdown Export ✅
 
 ---
 
@@ -78,10 +78,10 @@ Objectives
 
 | Milestone | Goal |
 |-----------|------|
-| Milestone 02 | Improve UI / UX |
-| Milestone 03 | Browser Extension |
-| Milestone 04 | Knowledge Card |
-| Milestone 05 | Public Beta |
+| Milestone 03 | Improve UI / UX |
+| Milestone 04 | Browser Extension |
+| Milestone 05 | Knowledge Card |
+| Milestone 06 | Public Beta |
 
 ---
 
@@ -174,6 +174,8 @@ Latest
 - Milestone 00 Completed
 - Claude Code Implementation Started
 - MVP v0.1 Build Complete，驗收測試通過（見 MVP_Test_Report.md）
+- Milestone 02 文件狀態同步完成（TODO / Engineering Backlog / Acceptance Test / Dashboard），
+  Study Note 章節命名決策 Accepted（見 CHANGELOG.md「MVP v0.1 — Documentation Sync」）
 
 See:
 
@@ -185,11 +187,11 @@ CHANGELOG.md
 
 Current Action
 
-➡️ Claude Code Development
+➡️ 等待 Product Owner 最終驗收確認 Milestone 02；確認後開始規劃 Milestone 03
 
 Current Goal
 
-完成 MVP 第一版。
+完成 MVP 第一版最終驗收，準備進入下一 Milestone。
 
 ---
 

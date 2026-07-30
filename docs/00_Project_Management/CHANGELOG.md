@@ -8,7 +8,7 @@ Purpose: Record all major changes to the project, documentation, architecture, s
 Scope: All AI Products
 Priority: High
 Author: ChatGPT
-Last Updated: 2026-07-29
+Last Updated: 2026-07-30
 Related Documents:
   - Project_Dashboard.md
   - Development_Operating_System.md
@@ -166,6 +166,37 @@ FastAPI Web Application（`app/`）：
   實測運作正常）
 - ffmpeg 未安裝警告（目前不影響功能）
 - Queue 僅存於記憶體，伺服器重啟後清空（Transcript／Study Note 檔案本身持久保存）
+
+---
+
+## MVP v0.1 — Documentation Sync
+
+Date
+
+2026-07-30
+
+Status
+
+Milestone 02 (Build MVP) Closed
+
+### Decision (Accepted)
+
+- Study Note 章節命名維持目前實作：`Executive Summary` / `Key Takeaways` /
+  `Detailed Notes` / `Core Concepts` / `Workflow` / `Tools` / `Best Practices` /
+  `Key Decisions` / `Future Research` / `References`（含 Metadata 區塊：Title /
+  Source / Author / Date / Language / Tags / Version）。
+- 不修改程式碼（`app/gemini_client.py`、`app/study_note.py`）。改為將
+  `docs/04_Templates/StudyNote_Template_v3.0.md` 與
+  `docs/02_Prompt_Design/03_Output_Schema/StudyNote_Output_Schema_v1.0.md`
+  （更新為 Document Version v3.0）反向同步為與實作一致，重新確立 Template 為
+  Single Source of Truth。
+
+### Changed
+
+- `app/TODO.md`、`docs/99_Milestone/Milestone_01_Prototype_Freeze/Engineering_Backlog.md`、
+  `docs/99_Milestone/Milestone_02_Build_MVP/Acceptance_Test.md`、
+  `docs/00_Project_Management/Project_Dashboard.md` 更新為反映實際完成進度，正式關閉
+  Milestone 02。
 
 ---
 

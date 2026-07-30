@@ -329,10 +329,10 @@ Application Architecture 不需修改。
 - PRD.md
 - Technical_Decision.md
 - Workflow_Specification.md
-- Application_Architecture_Blueprint_v2.0.md
-- Wireframe_Specification_v2.0.md
-- UI_Design_Pack_v1.0
-- Google_AI_Studio_Build_Specification_v2.0.md
+- Application Architecture Blueprint.md
+- Wireframe_Specification.md (docs/05_UI_UX/)
+- UI_Design_Pack.md
+- Google_AI_Studio_Build_Specification.md
 
 ---
 

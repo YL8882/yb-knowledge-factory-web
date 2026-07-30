@@ -8,7 +8,7 @@ Purpose: Define the acceptance criteria and test checklist for Milestone 02.
 Scope: YB Knowledge Factory MVP v0.1
 Priority: High
 Author: ChatGPT
-Last Updated: 2026-07-29
+Last Updated: 2026-07-30
 Related Documents:
   - PRD.md
   - Workflow_Specification.md
@@ -59,13 +59,15 @@ MVP 必須完成：
 
 | ID | Test Item | Expected Result | Status |
 |----|-----------|-----------------|--------|
-| TC-001 | 輸入有效 YouTube URL | 成功接受網址 | ☐ |
-| TC-002 | 自動取得影片標題 | 顯示正確標題 | ☐ |
-| TC-003 | 新增至 Queue | Queue 顯示新項目 | ☐ |
-| TC-004 | 產生 Transcript | 成功建立 Transcript.md | ☐ |
-| TC-005 | 產生 Study Note | 成功建立 Study_Note.md | ☐ |
-| TC-006 | 下載 Transcript | 可下載 Markdown | ☐ |
-| TC-007 | 下載 Study Note | 可下載 Markdown | ☐ |
+| TC-001 | 輸入有效 YouTube URL | 成功接受網址 | ☑ PASS |
+| TC-002 | 自動取得影片標題 | 顯示正確標題 | ☑ PASS |
+| TC-003 | 新增至 Queue | Queue 顯示新項目 | ☑ PASS |
+| TC-004 | 產生 Transcript | 成功建立 Transcript.md | ☑ PASS |
+| TC-005 | 產生 Study Note | 成功建立 Study_Note.md | ☑ PASS |
+| TC-006 | 下載 Transcript | 可下載 Markdown | ☑ PASS |
+| TC-007 | 下載 Study Note | 可下載 Markdown | ☑ PASS |
+
+詳細測試步驟與截圖等級證據見 `docs/MVP_Test_Report.md` §3.1。
 
 ---
 
@@ -94,10 +96,10 @@ Download Markdown
 
 Checklist：
 
-- [ ] 流程可完整執行
-- [ ] 無中斷
-- [ ] 無錯誤訊息
-- [ ] 執行時間符合預期
+- [x] 流程可完整執行
+- [x] 無中斷
+- [x] 無錯誤訊息
+- [x] 執行時間符合預期
 
 ---
 
@@ -107,11 +109,11 @@ Checklist：
 
 確認：
 
-- [ ] 檔案建立成功
-- [ ] UTF-8 編碼
-- [ ] Markdown 格式
-- [ ] 第一行包含影片名稱
-- [ ] 第二行包含 YouTube URL
+- [x] 檔案建立成功
+- [x] UTF-8 編碼
+- [x] Markdown 格式
+- [x] 第一行包含影片名稱
+- [x] 第二行包含 YouTube URL
 
 ---
 
@@ -119,20 +121,20 @@ Checklist：
 
 確認：
 
-- [ ] 摘要完整
-- [ ] 重點整理正確
-- [ ] Workflow 存在
-- [ ] Markdown 格式正確
+- [x] 摘要完整
+- [x] 重點整理正確
+- [x] Workflow 存在
+- [x] Markdown 格式正確
 
 ---
 
 # User Experience Checklist
 
-- [ ] 首頁正常顯示
-- [ ] Queue 更新正常
-- [ ] Loading 顯示正常
-- [ ] Error Message 正確
-- [ ] Success Notification 正常
+- [x] 首頁正常顯示
+- [x] Queue 更新正常
+- [x] Loading 顯示正常
+- [x] Error Message 正確
+- [x] Success Notification 正常
 
 ---
 
@@ -140,11 +142,11 @@ Checklist：
 
 測試：
 
-- [ ] 空白 URL
-- [ ] 非 YouTube 網址
-- [ ] 無效影片
-- [ ] Transcript 取得失敗
-- [ ] LLM 回應失敗
+- [x] 空白 URL
+- [x] 非 YouTube 網址
+- [x] 無效影片
+- [x] Transcript 取得失敗（依賴 yt-dlp／faster-whisper 例外處理，已走過錯誤路徑，見 MVP_Test_Report.md）
+- [x] LLM 回應失敗（Gemini Key 未設定／呼叫失敗，見 MVP_Test_Report.md §3.3）
 
 系統應：
 
@@ -168,11 +170,11 @@ Checklist：
 
 Milestone 02 視為完成，需符合：
 
-- [ ] 所有 Critical Test Case 通過
-- [ ] Workflow 完整
-- [ ] Markdown 可下載
-- [ ] 無重大 Bug
-- [ ] Product Owner 驗收完成
+- [x] 所有 Critical Test Case 通過
+- [x] Workflow 完整
+- [x] Markdown 可下載
+- [x] 無重大 Bug
+- [ ] Product Owner 驗收完成（待您正式確認；本次已確認 Study Note 章節命名維持現行實作，見 CHANGELOG.md「MVP v0.1 — Documentation Sync」）
 
 ---
 
@@ -180,7 +182,7 @@ Milestone 02 視為完成，需符合：
 
 | Tester | Date | Result |
 |--------|------|--------|
-| | | ☐ PASS / ☐ FAIL |
+| Claude Code | 2026-07-29 | ☑ PASS（詳見 `docs/MVP_Test_Report.md`，待 Product Owner 最終確認） |
 
 ---
 

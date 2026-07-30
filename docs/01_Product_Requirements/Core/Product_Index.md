@@ -8,16 +8,16 @@ Purpose: Provide a single entry point for understanding the product structure, s
 Scope: Current Product
 Priority: Critical
 Author: ChatGPT
-Last Updated: 2026-07-29
+Last Updated: 2026-07-30
 Related Documents:
-  - PRD.md
-  - Product_Architecture.md
-  - Workflow_Specification.md
-  - Prompt_Specification.md
-  - Runtime_Specification.md
-  - Output_Specification.md
-  - UI_Component_Specification.md
-  - Wireframe_Specification.md
+  - 01_Product_Requirements/Core/PRD.md
+  - 01_Product_Requirements/Core/Product_Architecture.md
+  - 01_Product_Requirements/Core/Workflow_Specification.md (repository-level; see 03_Workflows/Workflow_Specification.md for detailed implementation)
+  - 02_Prompt_Design/Prompt_Specification.md
+  - 01_Product_Requirements/Core/Runtime_Specification.md
+  - 01_Product_Requirements/Core/Output_Specification.md
+  - 01_Product_Requirements/UI/UI_Component_Specification.md
+  - 01_Product_Requirements/UI/Wireframe_Specification.md (product-level; see 05_UI_UX/Wireframe_Specification.md for engineering implementation)
 ---
 
 # Product Index
@@ -124,14 +124,16 @@ Coding
 
 | Document | Purpose |
 |----------|---------|
-| PRD.md | 定義產品需求與 MVP 範圍 |
-| Product_Architecture.md | 定義產品架構、模組與能力 |
-| Workflow_Specification.md | 定義資料流程與工作流程 |
-| Prompt_Specification.md | 定義 Prompt Engineering 標準 |
-| Runtime_Specification.md | 定義系統執行方式 |
-| Output_Specification.md | 定義輸出格式與品質 |
-| UI_Component_Specification.md | 定義 UI 元件 |
-| Wireframe_Specification.md | 定義畫面配置與資訊架構 |
+| 01_Product_Requirements/Core/PRD.md | 定義產品需求與 MVP 範圍 |
+| 01_Product_Requirements/Core/Product_Architecture.md | 定義產品架構、模組與能力 |
+| 01_Product_Requirements/Core/Workflow_Specification.md | 定義資料流程與工作流程（Repository-level，抽象概觀） |
+| 03_Workflows/Workflow_Specification.md | 詳細工作流程實作（Step-by-step，含 Exception Handling） |
+| 02_Prompt_Design/Prompt_Specification.md | 定義 Prompt Engineering 標準 |
+| 01_Product_Requirements/Core/Runtime_Specification.md | 定義系統執行方式 |
+| 01_Product_Requirements/Core/Output_Specification.md | 定義輸出格式與品質 |
+| 01_Product_Requirements/UI/UI_Component_Specification.md | 定義 UI 元件 |
+| 01_Product_Requirements/UI/Wireframe_Specification.md | 定義畫面配置與資訊架構（Product-level，抽象概觀） |
+| 05_UI_UX/Wireframe_Specification.md | 詳細 UI Wireframe 實作（含實際畫面配置與設計稿） |
 
 ---
 
@@ -224,21 +226,20 @@ Future Version
 ## Project Management
 
 - Development_Operating_System.md
-- Documentation_Standard.md
 - Project_Dashboard.md
 
 ---
 
 ## Product Requirements
 
-- PRD.md
-- Product_Architecture.md
-- Workflow_Specification.md
-- Prompt_Specification.md
-- Runtime_Specification.md
-- Output_Specification.md
-- UI_Component_Specification.md
-- Wireframe_Specification.md
+- 01_Product_Requirements/Core/PRD.md
+- 01_Product_Requirements/Core/Product_Architecture.md
+- 01_Product_Requirements/Core/Workflow_Specification.md (repository-level; see 03_Workflows/Workflow_Specification.md for detailed implementation)
+- 02_Prompt_Design/Prompt_Specification.md
+- 01_Product_Requirements/Core/Runtime_Specification.md
+- 01_Product_Requirements/Core/Output_Specification.md
+- 01_Product_Requirements/UI/UI_Component_Specification.md
+- 01_Product_Requirements/UI/Wireframe_Specification.md (product-level; see 05_UI_UX/Wireframe_Specification.md for engineering implementation)
 
 ---
 

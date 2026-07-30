@@ -1,6 +1,6 @@
 # StudyNote Output Schema
 
-**Document Version:** v2.0 (Final)
+**Document Version:** v3.0 (Final)
 **Document Type:** Output Schema Specification
 **Module:** 02_Prompt_Design / 03_Output_Schema
 **Product:** YB Knowledge Factory MVP v0.1
@@ -12,7 +12,7 @@
 
 本文件定義 **Study Note** 的官方輸出結構（Output Schema）。
 
-自 v2.0 起，本文件之輸出結構**完全同步**於：
+自 v3.0 起，本文件之輸出結構**完全同步**於：
 
 ```text
 docs/04_Templates/StudyNote_Template_v3.0.md
@@ -70,47 +70,87 @@ Study Note 必須符合以下原則：
 Study Note 應依照以下固定章節輸出：
 
 ```text
-{{影片名}}（標題）
+Metadata
+│   ├── Title
+│   ├── Source
+│   ├── Author
+│   ├── Date
+│   ├── Language
+│   ├── Tags
+│   └── Version
 │
-├── 影片網址
+├── Executive Summary
 │
-├── 一句話摘要
+├── Key Takeaways
 │
-├── 重點摘要
+├── Detailed Notes
+│   └── 主題一、主題二……
 │
-├── 重點解析
-│   └── 主題一、主題二、主題三……
+├── Core Concepts
 │
-├── 操作流程
-│   └── Step 1、Step 2、Step 3……
+├── Workflow
+│   └── Step 1、Step 2……
 │
-└── 延伸資訊
-    ├── 關鍵字（Keywords）
-    ├── Tags
-    └── 延伸研究
+├── Tools
+│
+├── Best Practices
+│
+├── Key Decisions
+│
+├── Future Research
+│
+└── References
 ```
 
 不得新增、刪除或重新排列章節。
 
 ---
 
-# 5. 標題與影片網址
+# 5. Metadata
 
-文件開頭直接以影片名稱作為標題，並列出影片網址，格式如下：
+文件開頭為固定 Metadata 區塊，格式如下：
 
 ```markdown
-# {{影片名}}
+# Study Note
 
-**影片網址：**
-{{影片網址}}
+Title: {{影片名}}
+
+Source: {{影片網址}}
+
+Author: 未提供
+
+Date: {{YYYY-MM-DD}}
+
+Language: 繁體中文
+
+Tags: {{tags}}
+
+Version: v1.0
 ```
 
-本 Schema 不使用獨立的 Metadata 區塊（不包含 Author / Date / Language / Tags /
-Version 等欄位）；影片名稱與網址即為文件唯一必要的來源資訊。
+規則：
+
+- `Title` 與 `Source` 直接採用使用者提供的影片標題與網址，不得省略或改寫。
+- `Author` 固定填寫「未提供」（來源影片未提供作者資訊）。
+- `Date` 為 Study Note 產生日期。
+- `Language` 固定為「繁體中文」。
+- `Tags` 由 AI 產生 3～6 個 Hashtag 形式標籤（例如 `#AI #VibeCoding`），彼此以空白分隔。
+- `Version` 固定為 `v1.0`（Study Note 本身的版本，非本 Schema 版本）。
+- Metadata 區塊由程式（非 AI 模型）組裝；AI 模型僅需依 §5.1 規則產生 Tags，其餘章節內容依 §6–§15 產生。
+
+## 5.1 AI 輸出的 Tags 行
+
+AI 模型呼叫時，僅需在回應第一行輸出：
+
+```text
+Tags: #tag1 #tag2 #tag3
+```
+
+之後空一行，再依序輸出 §6–§15 之章節內容（不含 Metadata 區塊與最上層標題）。
 
 ---
 
-# 6. 一句話摘要
+# 6. Executive Summary
 
 目的：
 
@@ -125,43 +165,49 @@ Version 等欄位）；影片名稱與網址即為文件唯一必要的來源資
 
 ---
 
-# 7. 重點摘要
+# 7. Key Takeaways
 
 列出最重要重點。
 
 規則：
 
 - 使用條列式（Bullet List）。
-- 建議 5 點左右。
+- 建議 3～5 點左右。
 - 每點一句，避免展開說明。
 
 ---
 
-# 8. 重點解析
+# 8. Detailed Notes
 
 Study Note 主體，依主題重新組織內容，不得依照逐字稿原始順序排列。
 
 格式：
 
 ```markdown
-## 主題一（或 00:00－xx:xx）
+### 主題一（或 00:00－xx:xx）
 
 - 重點
 - 重點
 
----
-
-## 主題二（或 xx:xx－xx:xx）
+### 主題二（或 xx:xx－xx:xx）
 
 - 重點
 - 重點
 ```
 
-主題數量依影片內容彈性增減，每個主題之間以 `---` 分隔。
+若內容包含多個主題，使用「### 主題名稱」子標題分段；若僅有單一主題，可省略子標題直接條列重點。
 
 ---
 
-# 9. 操作流程
+# 9. Core Concepts
+
+列出影片提及的重要概念與定義，使用條列式。
+
+若無對應內容，仍須保留標題並註明「本影片未提及」。
+
+---
+
+# 10. Workflow
 
 若影片包含明確操作流程或步驟，依序使用：
 
@@ -185,33 +231,52 @@ Study Note 主體，依主題重新組織內容，不得依照逐字稿原始順
 
 ---
 
-# 10. 延伸資訊
+# 11. Tools
 
-包含三個固定子章節，缺一不可：
+列出影片提及的重要工具與技術，使用條列式。
 
-## 關鍵字（Keywords）
-
-列出影片重要關鍵字或名詞，使用條列式。
-
-## Tags
-
-列出 Hashtag 形式標籤，例如：
-
-```markdown
-- #AI
-- #VibeCoding
-- #ClaudeCode
-```
-
-## 延伸研究
-
-列出值得延伸研究的主題、技術、工具或商業觀點，使用條列式。
-
-若某子章節無對應內容，仍須保留標題並註明「本影片未提及」。
+若無對應內容，仍須保留標題並註明「本影片未提及」。
 
 ---
 
-# 11. Markdown Rules
+# 12. Best Practices
+
+列出影片提及的最佳實務與經驗分享，使用條列式。
+
+若無對應內容，仍須保留標題並註明「本影片未提及」。
+
+---
+
+# 13. Key Decisions
+
+列出影片提及的重要決策依據與選擇理由，使用條列式。
+
+若無對應內容，仍須保留標題並註明「本影片未提及」。
+
+---
+
+# 14. Future Research
+
+列出值得延伸研究的主題、技術、工具或商業觀點，使用條列式。
+
+若無對應內容，仍須保留標題並註明「本影片未提及」。
+
+---
+
+# 15. References
+
+至少包含使用者提供的影片標題與網址，格式：
+
+```markdown
+- 影片標題：{{影片名}}
+- 影片網址：{{影片網址}}
+```
+
+影片標題與網址屬於已知來源資訊，不得因逐字稿本身未提及而省略。
+
+---
+
+# 16. Markdown Rules
 
 允許：
 
@@ -233,34 +298,39 @@ Study Note 主體，依主題重新組織內容，不得依照逐字稿原始順
 
 ---
 
-# 12. Naming Rules
+# 17. Naming Rules
 
 章節名稱固定，須與下列名稱完全一致：
 
 ```text
-{{影片名}}
+Metadata（Title / Source / Author / Date / Language / Tags / Version）
 
-影片網址
+Executive Summary
 
-一句話摘要
+Key Takeaways
 
-重點摘要
+Detailed Notes
 
-重點解析
+Core Concepts
 
-操作流程
+Workflow
 
-延伸資訊
-├── 關鍵字（Keywords）
-├── Tags
-└── 延伸研究
+Tools
+
+Best Practices
+
+Key Decisions
+
+Future Research
+
+References
 ```
 
 不得自行改名、翻譯或調整順序。
 
 ---
 
-# 13. Quality Requirements
+# 18. Quality Requirements
 
 Study Note 應符合：
 
@@ -280,25 +350,25 @@ Study Note 應符合：
 
 ---
 
-# 14. Validation Checklist
+# 19. Validation Checklist
 
 輸出完成後應確認：
 
-- 標題為影片名稱
-- 影片網址存在
-- 一句話摘要不超過 100 字
-- 重點摘要存在
-- 重點解析依主題分段
-- 操作流程存在（無流程時已填寫替代文字）
-- 延伸資訊包含關鍵字、Tags、延伸研究三個子章節
+- Metadata 區塊完整（Title / Source / Author / Date / Language / Tags / Version）
+- Executive Summary 不超過 100 字
+- Key Takeaways 存在
+- Detailed Notes 依主題分段
+- Workflow 存在（無流程時已填寫替代文字）
+- Core Concepts、Tools、Best Practices、Key Decisions、Future Research 皆存在（無內容時已註明「本影片未提及」）
+- References 包含影片標題與網址
 - Markdown 正確
-- 無空章節（若無內容須註明「本影片未提及」）
+- 無空章節
 - 無杜撰內容
 - 無重複內容
 
 ---
 
-# 15. Dependencies
+# 20. Dependencies
 
 本 Schema 由以下文件共同組成：
 
@@ -324,7 +394,7 @@ Study_Note.md
 
 ---
 
-# 16. Future Compatibility
+# 21. Future Compatibility
 
 本 Schema 應支援：
 
@@ -339,7 +409,7 @@ Study_Note.md
 
 ---
 
-# 17. Version Policy
+# 22. Version Policy
 
 版本管理：
 
@@ -377,6 +447,6 @@ Study_Note.md
 | Item | Value |
 |------|-------|
 | Document | StudyNote Output Schema |
-| Version | v2.0 (Final) |
+| Version | v3.0 (Final) |
 | Product | YB Knowledge Factory MVP v0.1 |
-| Status | ✅ Final — Synced with StudyNote_Template_v3.0.md |
+| Status | ✅ Final — Synced with StudyNote_Template_v3.0.md and actual `app/gemini_client.py` implementation |

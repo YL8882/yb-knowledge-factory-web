@@ -656,9 +656,9 @@ Application 不需重新設計。
     
 - Prompt_Specification.md
     
-- Wireframe_Specification_v2.0.md
+- Wireframe_Specification.md (docs/05_UI_UX/)
     
-- UI_Design_Pack_v1.0
+- UI_Design_Pack.md
     
 - Google_AI_Studio_Build_Specification.md
     
