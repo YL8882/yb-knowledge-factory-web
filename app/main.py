@@ -53,7 +53,7 @@ async def get_history():
 
 
 @app.post("/api/queue")
-async def add_to_queue(request: AddVideoRequest, background_tasks: BackgroundTasks):
+async def add_to_queue(request: AddVideoRequest):
     try:
         video_id = youtube.extract_video_id(request.url)
     except youtube.InvalidYouTubeURLError:
@@ -79,12 +79,9 @@ async def add_to_queue(request: AddVideoRequest, background_tasks: BackgroundTas
     # to the YB channel after the user deletes it from the Queue to free up space.
     history_store.add_entry(video_id=video_id, title=metadata["title"], url=request.url.strip())
 
-    # Auto-start Transcript generation (+ quick summary) in the background so the
-    # one-line summary appears under the title without the user having to click
-    # "產生 Transcript" first. Runs after the response is sent; failures just leave
-    # the item back at "Queued" so the manual button still works as a retry.
-    background_tasks.add_task(_auto_generate_transcript, video_id)
-
+    # No auto-start here: per Queue_System_Design.md, "Queued" means no work has
+    # started yet. Processing only begins once the user clicks "開始轉錄" (POST
+    # /api/queue/{video_id}/start below).
     return item
 
 
@@ -160,31 +157,45 @@ def _generate_transcript_for_item(video_id: str) -> dict:
     # (not simulated), and a failure records exactly which of the two stages it
     # happened in — so the frontend's processing panel can honestly show which
     # stage is active, and which stage failed, without guessing.
-    queue_store.update_item(video_id, status="Downloading", last_error="", last_error_stage="")
+    queue_store.update_item(
+        video_id, status="Downloading", last_error="", last_error_stage="",
+        progress_percent=None, eta_seconds=None,
+    )
+
+    def _report_progress(fraction: float, eta_seconds: float | None) -> None:
+        queue_store.update_item(
+            video_id,
+            progress_percent=round(fraction * 100),
+            eta_seconds=round(eta_seconds) if eta_seconds is not None else None,
+        )
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="ybkf_"))
     try:
         try:
-            audio_path = transcript_service.download_audio(video_id, tmp_dir)
+            audio_path = transcript_service.download_audio(video_id, tmp_dir, on_progress=_report_progress)
         except transcript_service.AudioDownloadError as exc:
             queue_store.update_item(
                 video_id,
                 status="Queued",
                 last_error=error_messages.classify_error(str(exc)),
                 last_error_stage="download",
+                progress_percent=None,
+                eta_seconds=None,
             )
             raise TranscriptGenerationError(str(exc)) from exc
 
-        queue_store.update_item(video_id, status="Transcribing")
+        queue_store.update_item(video_id, status="Transcribing", progress_percent=None, eta_seconds=None)
 
         try:
-            text = transcript_service.transcribe_audio(audio_path)
+            text = transcript_service.transcribe_audio(audio_path, on_progress=_report_progress)
         except transcript_service.TranscriptionError as exc:
             queue_store.update_item(
                 video_id,
                 status="Queued",
                 last_error=error_messages.classify_error(str(exc)),
                 last_error_stage="transcript",
+                progress_percent=None,
+                eta_seconds=None,
             )
             raise TranscriptGenerationError(str(exc)) from exc
     finally:
@@ -212,6 +223,8 @@ def _generate_transcript_for_item(video_id: str) -> dict:
         status="Transcript Ready",
         transcript_path=str(output_path),
         summary=summary,
+        progress_percent=None,
+        eta_seconds=None,
     )
 
     return {
@@ -334,6 +347,21 @@ def _retry_study_note_only(video_id: str) -> None:
         _generate_study_note_for_item(video_id)
     except StudyNoteGenerationError:
         pass
+
+
+@app.post("/api/queue/{video_id}/start")
+async def start_processing(video_id: str, background_tasks: BackgroundTasks):
+    """User-triggered pipeline start for an item still sitting at "Queued" with no
+    work done yet (the "開始轉錄" button). Runs the same Transcript -> Study Note
+    pipeline as /retry, just from a fresh item instead of a failed one.
+    """
+    try:
+        queue_store.get_item(video_id)
+    except queue_store.QueueItemNotFoundError:
+        raise HTTPException(status_code=404, detail="項目不存在")
+
+    background_tasks.add_task(_auto_generate_transcript, video_id)
+    return {"status": "started"}
 
 
 @app.post("/api/queue/{video_id}/retry")

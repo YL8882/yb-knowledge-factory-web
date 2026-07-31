@@ -149,15 +149,36 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
-            showStatus('已加入暫存區，將自動產生 Transcript、Study Note 並下載...', 'success');
+            // No auto-start: the item just sits in the staging area (暫存區) until
+            // the user clicks its "開始轉錄" button below.
+            showStatus('已加入暫存區，請在下方點擊「開始轉錄」開始處理', 'success');
             urlInput.value = '';
-            trackedVideoId = data.video_id;
             await loadQueue();
-            pollPipelineProgress(data.video_id);
         } catch (error) {
             showStatus('網路連線失敗', 'error');
         } finally {
             setLoading(false);
+        }
+    }
+
+    // User clicked "開始轉錄" on a queue item that hasn't been touched yet — kicks
+    // off the same background Transcript -> Study Note pipeline as retry, just from
+    // a fresh item instead of a failed one.
+    async function startProcessing(videoId) {
+        try {
+            const response = await fetch('/api/queue/' + encodeURIComponent(videoId) + '/start', {
+                method: 'POST',
+            });
+            if (!response.ok) {
+                showStatus('啟動轉錄失敗', 'error');
+                return;
+            }
+            showStatus('開始轉錄，將自動產生 Transcript、Study Note 並下載...', 'success');
+            trackedVideoId = videoId;
+            await loadQueue();
+            pollPipelineProgress(videoId);
+        } catch (error) {
+            showStatus('網路連線失敗', 'error');
         }
     }
 
@@ -324,17 +345,53 @@ document.addEventListener('DOMContentLoaded', function() {
         return '○';
     }
 
-    // An indeterminate (not a fabricated percentage) progress bar, shown only while a
-    // step is actively running. We only know discrete statuses from the backend (no
-    // sub-step progress events), so an animated bar is the honest way to show "working"
-    // rather than inventing a specific % that isn't real.
-    function buildProgressBar() {
+    // Progress bar for the active step. When the backend has a real percentage
+    // (long videos: yt-dlp download progress, or Whisper segment position against
+    // total audio duration for transcription) it renders a determinate fill and an
+    // ETA line under it. Otherwise (e.g. Study Note generation, a single Gemini
+    // call with no sub-progress) it falls back to the honest indeterminate "working"
+    // animation rather than inventing a percentage that isn't real.
+    function buildProgressBar(percent, etaSeconds) {
+        const wrap = document.createElement('div');
+
         const bar = document.createElement('div');
         bar.className = 'progress-bar';
         const fill = document.createElement('div');
         fill.className = 'progress-bar-fill';
+
+        if (typeof percent === 'number') {
+            bar.classList.add('is-determinate');
+            fill.style.width = Math.max(0, Math.min(100, percent)) + '%';
+        }
+
         bar.appendChild(fill);
-        return bar;
+        wrap.appendChild(bar);
+
+        if (typeof percent === 'number') {
+            const label = document.createElement('p');
+            label.className = 'progress-eta';
+            const etaText = formatEta(etaSeconds);
+            label.textContent = percent + '%' + (etaText ? '，預估剩餘 ' + etaText : '');
+            wrap.appendChild(label);
+        }
+
+        return wrap;
+    }
+
+    // Renders a seconds count as a short human-readable duration, or '' when the
+    // backend doesn't have enough data yet to estimate one (e.g. the very first
+    // progress tick, before any elapsed-time-per-fraction-done ratio exists).
+    function formatEta(etaSeconds) {
+        if (typeof etaSeconds !== 'number' || !isFinite(etaSeconds) || etaSeconds < 0) {
+            return '';
+        }
+        const total = Math.round(etaSeconds);
+        if (total < 60) {
+            return total + ' 秒';
+        }
+        const minutes = Math.floor(total / 60);
+        const seconds = total % 60;
+        return seconds === 0 ? minutes + ' 分' : minutes + ' 分 ' + seconds + ' 秒';
     }
 
     function buildStepChecklist(status) {
@@ -422,14 +479,29 @@ document.addEventListener('DOMContentLoaded', function() {
             title.rel = 'noopener noreferrer';
             title.textContent = item.title;
 
-            const badge = document.createElement('span');
+            const hasTranscript = Boolean(item.transcript_path);
+            const notStartedYet = item.status === 'Queued' && !hasTranscript && !item.last_error;
+
+            // A never-started item shows a clickable "開始轉錄" badge instead of the
+            // static "Queued" label — the badge itself is the start action, so there's
+            // no separate button competing for attention next to the title.
+            const badge = document.createElement(notStartedYet ? 'button' : 'span');
             badge.className = 'queue-item-badge';
-            if (item.status === 'Downloading' || item.status === 'Transcribing' || item.status === 'Generating') {
-                badge.classList.add('is-active');
-            } else if (item.status === 'Transcript Ready' || item.status === 'Study Note Ready') {
-                badge.classList.add('is-done');
+            if (notStartedYet) {
+                badge.type = 'button';
+                badge.classList.add('is-start');
+                badge.innerHTML = '<span aria-hidden="true">▶</span> 開始轉錄';
+                badge.addEventListener('click', function() {
+                    startProcessing(item.video_id);
+                });
+            } else {
+                if (item.status === 'Downloading' || item.status === 'Transcribing' || item.status === 'Generating') {
+                    badge.classList.add('is-active');
+                } else if (item.status === 'Transcript Ready' || item.status === 'Study Note Ready') {
+                    badge.classList.add('is-done');
+                }
+                badge.textContent = item.status;
             }
-            badge.textContent = item.status;
 
             const removeBtn = document.createElement('button');
             removeBtn.className = 'queue-item-remove';
@@ -454,12 +526,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 li.appendChild(summaryEl);
             }
 
-            const hasTranscript = Boolean(item.transcript_path);
             const hasStudyNote = Boolean(item.study_note_path);
             const isBusy = item.status === 'Downloading' || item.status === 'Transcribing' || item.status === 'Generating';
 
             if (isBusy) {
-                li.appendChild(buildProgressBar());
+                li.appendChild(buildProgressBar(item.progress_percent, item.eta_seconds));
             }
 
             li.appendChild(buildStepChecklist(item.status));
@@ -596,6 +667,13 @@ document.addEventListener('DOMContentLoaded', function() {
         } else if (!hasActive && states.studynote === 'done') {
             processingResultEl.textContent = '✓ 完成：Transcript、Study Note 已產生並自動下載';
             processingResultEl.className = 'processing-result is-success';
+        } else if (hasActive && typeof item.progress_percent === 'number') {
+            // Real percentage from the backend (download bytes, or Whisper segment
+            // position against total audio duration) — a long video processes in
+            // visible chunks instead of sitting at an unexplained spinner.
+            const etaText = formatEta(item.eta_seconds);
+            processingResultEl.textContent = item.progress_percent + '%' + (etaText ? '，預估剩餘 ' + etaText : '');
+            processingResultEl.className = 'processing-result';
         } else {
             processingResultEl.textContent = '';
             processingResultEl.className = 'processing-result';

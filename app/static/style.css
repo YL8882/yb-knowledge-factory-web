@@ -370,6 +370,8 @@ main {
     background: #eef1f4;
     color: #64748b;
     white-space: nowrap;
+    border: none;
+    font-family: inherit;
 }
 
 .queue-item-badge.is-active {
@@ -380,6 +382,23 @@ main {
 .queue-item-badge.is-done {
     background: #eafaf1;
     color: #0b5345;
+}
+
+/* The "Queued" badge becomes this clickable button for an item that hasn't been
+   started yet — same shape as the other badges, but red-filled and inline-flex so
+   the ▶ icon lines up, since it now doubles as the "開始轉錄" call to action. */
+.queue-item-badge.is-start {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: #ff0000;
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.queue-item-badge.is-start:hover {
+    background: #e60000;
 }
 
 /* Indeterminate progress bar, shown only while a step is actively running */
@@ -402,6 +421,20 @@ main {
 @keyframes progress-slide {
     0% { transform: translateX(-120%); }
     100% { transform: translateX(350%); }
+}
+
+/* Determinate variant: a real percentage from the backend, so no sliding animation
+   and the fill width reflects actual progress instead. */
+.progress-bar.is-determinate .progress-bar-fill {
+    animation: none;
+    transition: width 0.3s ease;
+}
+
+.progress-eta {
+    margin: -6px 0 12px;
+    font-size: 0.8em;
+    color: #9aa5b1;
+    text-align: right;
 }
 
 /* Step checklist (mirrors the Processing screen's workflow steps) */

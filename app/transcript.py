@@ -1,9 +1,18 @@
 import re
+import time
 from pathlib import Path
+from typing import Callable
 
 import yt_dlp
 from faster_whisper import WhisperModel
 from opencc import OpenCC
+
+# (fraction_done: 0..1, eta_seconds: float | None) -> None
+ProgressCallback = Callable[[float, float | None], None]
+
+# Minimum wall-clock gap between progress callbacks, so a fast-moving download or
+# a transcript with many short segments doesn't turn into a queue.json write storm.
+_PROGRESS_THROTTLE_SECONDS = 1.0
 
 OUTPUT_DIR = Path(__file__).parent.parent / "outputs" / "transcripts"
 
@@ -37,7 +46,7 @@ def _get_model() -> WhisperModel:
     return _model
 
 
-def download_audio(video_id: str, dest_dir: Path) -> Path:
+def download_audio(video_id: str, dest_dir: Path, on_progress: ProgressCallback | None = None) -> Path:
     dest_dir.mkdir(parents=True, exist_ok=True)
     outtmpl = str(dest_dir / f"{video_id}.%(ext)s")
 
@@ -47,6 +56,25 @@ def download_audio(video_id: str, dest_dir: Path) -> Path:
         "outtmpl": outtmpl,
         "noplaylist": True,
     }
+
+    if on_progress:
+        last_call = 0.0
+
+        def _hook(d: dict) -> None:
+            nonlocal last_call
+            if d.get("status") != "downloading":
+                return
+            total = d.get("total_bytes") or d.get("total_bytes_estimate")
+            downloaded = d.get("downloaded_bytes")
+            if not total or downloaded is None:
+                return
+            now = time.monotonic()
+            if now - last_call < _PROGRESS_THROTTLE_SECONDS:
+                return
+            last_call = now
+            on_progress(min(downloaded / total, 1.0), d.get("eta"))
+
+        ydl_opts["progress_hooks"] = [_hook]
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -63,11 +91,35 @@ def download_audio(video_id: str, dest_dir: Path) -> Path:
     return audio_path
 
 
-def transcribe_audio(audio_path: Path) -> str:
+def transcribe_audio(audio_path: Path, on_progress: ProgressCallback | None = None) -> str:
     try:
         model = _get_model()
-        segments, _info = model.transcribe(str(audio_path))
-        text = "".join(segment.text for segment in segments).strip()
+        segments, info = model.transcribe(str(audio_path))
+
+        # faster_whisper already decodes and transcribes in successive windows,
+        # yielding one segment at a time as it goes — that's the "chunking" a long
+        # video needs, for free. We just read progress off it: each segment carries
+        # the audio timestamp it ends at, so segment.end / total duration is the
+        # real fraction complete, and eta is extrapolated from how long that
+        # fraction has actually taken so far.
+        total_duration = info.duration if info and info.duration else None
+        start_time = time.monotonic()
+        last_call = 0.0
+        pieces = []
+
+        for segment in segments:
+            pieces.append(segment.text)
+
+            if on_progress and total_duration:
+                now = time.monotonic()
+                if now - last_call >= _PROGRESS_THROTTLE_SECONDS:
+                    last_call = now
+                    fraction = min(segment.end / total_duration, 1.0)
+                    elapsed = now - start_time
+                    eta_seconds = (elapsed / fraction) - elapsed if fraction > 0.01 else None
+                    on_progress(fraction, eta_seconds)
+
+        text = "".join(pieces).strip()
         text = _get_traditional_converter().convert(text)
     except Exception as exc:
         raise TranscriptionError(str(exc)) from exc
