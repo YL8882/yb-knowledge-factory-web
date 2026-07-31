@@ -10,12 +10,15 @@
     "video_id": "QKJq76z7G0Q",
     "title": "免費‼️ AI 語音已經有演技了?!  角色情緒、多人對話、聲音設計 + 變聲，全都能控制‼️｜Fish Audio 教程",
     "url": "https://www.youtube.com/watch?v=QKJq76z7G0Q",
-    "status": "Transcribing",
+    "status": "Study Note Ready",
     "created_at": "2026-07-31T12:14:45.230881+00:00",
     "last_error": "",
     "last_error_stage": "",
-    "progress_percent": 75,
-    "eta_seconds": 19
+    "progress_percent": null,
+    "eta_seconds": null,
+    "transcript_path": "C:\\Project\\01_Products\\01_YB_Knowledge_Factory_MVP_v0.1\\outputs\\transcripts\\TN_免費‼️ AI 語音已經有演技了_!  角色情緒、多人對話、聲音設計 + 變聲，全都能控制‼️｜Fish Audio 教程_QKJq76z7G0Q.md",
+    "summary": "影片展示 Fish Audio S2.1 Pro 如何讓 AI 語音精準控制角色情緒、多方對話、聲音設計與變聲，實現更自然的表演級配音。",
+    "study_note_path": "C:\\Project\\01_Products\\01_YB_Knowledge_Factory_MVP_v0.1\\outputs\\study_notes\\SN_免費‼️ AI 語音已經有演技了_!  角色情緒、多人對話、聲音設計 + 變聲，全都能控制‼️｜Fish Audio 教程_QKJq76z7G0Q.md"
   },
   {
     "video_id": "v6DmVH3_ZgA",
