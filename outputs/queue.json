@@ -1,1 +1,62 @@
-[]
+[
+  {
+    "video_id": "_MIvVs9RTE4",
+    "title": "AI真的能做完整的游戏了！一个工具搞定完整美术元素的创作",
+    "url": "https://www.youtube.com/watch?v=_MIvVs9RTE4",
+    "status": "Queued",
+    "created_at": "2026-07-31T12:14:10.817174+00:00"
+  },
+  {
+    "video_id": "QKJq76z7G0Q",
+    "title": "免費‼️ AI 語音已經有演技了?!  角色情緒、多人對話、聲音設計 + 變聲，全都能控制‼️｜Fish Audio 教程",
+    "url": "https://www.youtube.com/watch?v=QKJq76z7G0Q",
+    "status": "Transcribing",
+    "created_at": "2026-07-31T12:14:45.230881+00:00",
+    "last_error": "",
+    "last_error_stage": "",
+    "progress_percent": 75,
+    "eta_seconds": 19
+  },
+  {
+    "video_id": "v6DmVH3_ZgA",
+    "title": "独家AI数字人工具！内含三种专属IP模式，YouTube运营爆款必备，代替真人出镜",
+    "url": "https://www.youtube.com/watch?v=v6DmVH3_ZgA",
+    "status": "Queued",
+    "created_at": "2026-07-31T12:28:47.455177+00:00"
+  },
+  {
+    "video_id": "rJquC6iiyo0",
+    "title": "【一人公司实战】我招了个公众号AI员工，2小时工作压到15分钟！",
+    "url": "https://www.youtube.com/watch?v=rJquC6iiyo0",
+    "status": "Queued",
+    "created_at": "2026-07-31T12:30:52.312294+00:00"
+  },
+  {
+    "video_id": "t2oGF1Y-vcI",
+    "title": "Seedance 2.0 免费发布！导演级AI视频生成神器，免费方法全公开！实测效果震撼 | 零度解说",
+    "url": "https://www.youtube.com/watch?v=t2oGF1Y-vcI",
+    "status": "Queued",
+    "created_at": "2026-07-31T12:31:06.930506+00:00"
+  },
+  {
+    "video_id": "Xv_cpCtN4yE",
+    "title": "Suno AI 2026 作曲完整教學 | 入門到進階 | AI創作歌曲不僅好聽還可以商用",
+    "url": "https://www.youtube.com/watch?v=Xv_cpCtN4yE",
+    "status": "Queued",
+    "created_at": "2026-07-31T12:31:20.358083+00:00"
+  },
+  {
+    "video_id": "lR-sVrqMBxs",
+    "title": "Gemini 又更強了？Gemini in Workspace 4大功能新功能介紹！上班族一定用的到！｜泛科學院",
+    "url": "https://www.youtube.com/watch?v=lR-sVrqMBxs",
+    "status": "Queued",
+    "created_at": "2026-07-31T12:31:31.161783+00:00"
+  },
+  {
+    "video_id": "vxOFc0BLFGk",
+    "title": "用AI制作原创UGC带货视频，全流程一次讲清楚。操作的话就非常简单，依照我们的产品为主去写脚本、内容。#TikTok #UGC #带货 #电商",
+    "url": "https://www.youtube.com/watch?v=vxOFc0BLFGk",
+    "status": "Queued",
+    "created_at": "2026-07-31T12:31:40.691410+00:00"
+  }
+]
