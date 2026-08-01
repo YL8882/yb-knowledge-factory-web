@@ -222,7 +222,7 @@ def _generate_transcript_for_item(video_id: str) -> dict:
             queue_store.update_item(
                 video_id,
                 status="Queued",
-                last_error=error_messages.classify_error(str(exc)),
+                last_error=error_messages.classify_error(str(exc), stage="download"),
                 last_error_stage="download",
                 progress_percent=None,
                 eta_seconds=None,
@@ -237,7 +237,7 @@ def _generate_transcript_for_item(video_id: str) -> dict:
             queue_store.update_item(
                 video_id,
                 status="Queued",
-                last_error=error_messages.classify_error(str(exc)),
+                last_error=error_messages.classify_error(str(exc), stage="transcript"),
                 last_error_stage="transcript",
                 progress_percent=None,
                 eta_seconds=None,
@@ -330,7 +330,7 @@ def _generate_study_note_for_item(video_id: str) -> dict:
         queue_store.update_item(
             video_id,
             status="Transcript Ready",
-            last_error=error_messages.classify_error(str(exc)),
+            last_error=error_messages.classify_error(str(exc), stage="studynote"),
             last_error_stage="studynote",
         )
         raise StudyNoteGenerationError(str(exc)) from exc
@@ -338,7 +338,7 @@ def _generate_study_note_for_item(video_id: str) -> dict:
         queue_store.update_item(
             video_id,
             status="Transcript Ready",
-            last_error=error_messages.classify_error(str(exc)),
+            last_error=error_messages.classify_error(str(exc), stage="studynote"),
             last_error_stage="studynote",
         )
         raise StudyNoteGenerationError(str(exc)) from exc
@@ -493,7 +493,11 @@ def generate_transcript(video_id: str):
     try:
         return _generate_transcript_for_item(video_id)
     except TranscriptGenerationError as exc:
-        raise HTTPException(status_code=500, detail=error_messages.classify_error(str(exc)))
+        # _generate_transcript_for_item already recorded the correct stage
+        # (download vs transcript) on the item before raising — reuse it instead
+        # of re-guessing from the raw exception text here.
+        stage = queue_store.get_item(video_id).get("last_error_stage", "")
+        raise HTTPException(status_code=500, detail=error_messages.classify_error(str(exc), stage=stage))
 
 
 @app.post("/api/queue/{video_id}/study-note")
@@ -511,7 +515,7 @@ def generate_study_note(video_id: str):
             raise HTTPException(status_code=400, detail=detail)
         if detail == "Transcript 檔案不存在":
             raise HTTPException(status_code=404, detail=detail)
-        raise HTTPException(status_code=500, detail=error_messages.classify_error(detail))
+        raise HTTPException(status_code=500, detail=error_messages.classify_error(detail, stage="studynote"))
 
 
 @app.get("/api/queue/{video_id}/transcript/download")

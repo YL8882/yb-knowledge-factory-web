@@ -318,13 +318,6 @@ main {
     text-decoration: underline;
 }
 
-.download-folder-label {
-    font-size: 0.8em;
-    color: #9aa5b1;
-    margin-bottom: 10px;
-    min-height: 1em;
-}
-
 .queue-list {
     list-style: none;
     display: flex;
