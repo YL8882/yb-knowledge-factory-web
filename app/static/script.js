@@ -149,36 +149,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
-            // No auto-start: the item just sits in the staging area (暫存區) until
-            // the user clicks its "開始轉錄" button below.
-            showStatus('已加入暫存區，請在下方點擊「開始轉錄」開始處理', 'success');
+            // Auto-start: the backend immediately joins this item to its single
+            // sequential pipeline queue (see main.py _enqueue_for_processing). If
+            // other items are still ahead of it, it just waits its turn — no click
+            // needed either way.
+            showStatus('已加入暫存區，將依序自動產生 Transcript、Study Note 並下載...', 'success');
             urlInput.value = '';
+            trackedVideoId = data.video_id;
             await loadQueue();
+            pollPipelineProgress(data.video_id);
         } catch (error) {
             showStatus('網路連線失敗', 'error');
         } finally {
             setLoading(false);
-        }
-    }
-
-    // User clicked "開始轉錄" on a queue item that hasn't been touched yet — kicks
-    // off the same background Transcript -> Study Note pipeline as retry, just from
-    // a fresh item instead of a failed one.
-    async function startProcessing(videoId) {
-        try {
-            const response = await fetch('/api/queue/' + encodeURIComponent(videoId) + '/start', {
-                method: 'POST',
-            });
-            if (!response.ok) {
-                showStatus('啟動轉錄失敗', 'error');
-                return;
-            }
-            showStatus('開始轉錄，將自動產生 Transcript、Study Note 並下載...', 'success');
-            trackedVideoId = videoId;
-            await loadQueue();
-            pollPipelineProgress(videoId);
-        } catch (error) {
-            showStatus('網路連線失敗', 'error');
         }
     }
 
@@ -480,26 +463,24 @@ document.addEventListener('DOMContentLoaded', function() {
             title.textContent = item.title;
 
             const hasTranscript = Boolean(item.transcript_path);
-            const notStartedYet = item.status === 'Queued' && !hasTranscript && !item.last_error;
+            const isWaitingInLine = item.status === 'Queued' && !hasTranscript && !item.last_error;
 
-            // A never-started item shows a clickable "開始轉錄" badge instead of the
-            // static "Queued" label — the badge itself is the start action, so there's
-            // no separate button competing for attention next to the title.
-            const badge = document.createElement(notStartedYet ? 'button' : 'span');
+            // Everything now starts automatically on add (see main.py
+            // _enqueue_for_processing) and runs through one sequential pipeline, so
+            // "Queued" just means "waiting its turn" — a plain status label, not a
+            // call to action.
+            const badge = document.createElement('span');
             badge.className = 'queue-item-badge';
-            if (notStartedYet) {
-                badge.type = 'button';
-                badge.classList.add('is-start');
-                badge.innerHTML = '<span aria-hidden="true">▶</span> 開始轉錄';
-                badge.addEventListener('click', function() {
-                    startProcessing(item.video_id);
-                });
+            if (isWaitingInLine) {
+                badge.classList.add('is-waiting');
+                badge.textContent = '排隊中';
+            } else if (item.status === 'Downloading' || item.status === 'Transcribing' || item.status === 'Generating') {
+                badge.classList.add('is-active');
+                badge.textContent = item.status;
+            } else if (item.status === 'Transcript Ready' || item.status === 'Study Note Ready') {
+                badge.classList.add('is-done');
+                badge.textContent = item.status;
             } else {
-                if (item.status === 'Downloading' || item.status === 'Transcribing' || item.status === 'Generating') {
-                    badge.classList.add('is-active');
-                } else if (item.status === 'Transcript Ready' || item.status === 'Study Note Ready') {
-                    badge.classList.add('is-done');
-                }
                 badge.textContent = item.status;
             }
 

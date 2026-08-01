@@ -1,5 +1,5 @@
 # 受夠了AI助理的月費和隱私焦慮？QwenPaw：免費開源，把資料留在自己家
-https://www.youtube.com/watch?v=QE6FVnNcd3Y&list=LL&index=18&t=10s
+https://www.youtube.com/watch?v=QE6FVnNcd3Y&t=33s
 
 ---
 

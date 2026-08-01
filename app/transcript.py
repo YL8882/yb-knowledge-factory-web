@@ -1,4 +1,6 @@
 import re
+import shutil
+import tempfile
 import time
 from pathlib import Path
 from typing import Callable
@@ -20,6 +22,16 @@ _INVALID_FILENAME_CHARS = re.compile(r'[\\/:*?"<>|]')
 _SUMMARY_MARKER = "## Summary"
 _TRANSCRIPT_MARKER = "## Transcript"
 
+# Preference order when a video has captions in more than one language — Taiwan
+# Traditional Chinese first, then other Chinese variants, then English. If none of
+# these are available, fetch_subtitle_transcript() falls back to whatever single
+# language YouTube actually offers.
+_SUBTITLE_LANG_PRIORITY = ["zh-Hant", "zh-TW", "zh-Hans", "zh-CN", "zh", "en"]
+
+_VTT_TAG_PATTERN = re.compile(r"<[^>]+>")
+_VTT_TIMESTAMP_LINE = re.compile(r"^\d{2}:\d{2}:\d{2}[.,]\d{3}\s*-->")
+_VTT_CUE_NUMBER = re.compile(r"^\d+$")
+
 _model: WhisperModel | None = None
 _traditional_converter: OpenCC | None = None
 
@@ -39,11 +51,85 @@ class TranscriptionError(Exception):
     pass
 
 
+class SubtitleFetchError(Exception):
+    pass
+
+
 def _get_model() -> WhisperModel:
     global _model
     if _model is None:
         _model = WhisperModel("base", device="cpu", compute_type="int8")
     return _model
+
+
+def _vtt_to_text(vtt_content: str) -> str:
+    """Strips a WebVTT caption file down to plain spoken text: drops the header,
+    cue numbers, timestamp lines and inline `<...>` timing tags, and collapses the
+    rolling-caption duplication YouTube's auto-generated tracks produce (each cue
+    repeats the tail of the previous one) by skipping a line identical to the one
+    just emitted.
+    """
+    pieces: list[str] = []
+    for raw_line in vtt_content.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith(("WEBVTT", "Kind:", "Language:", "NOTE", "STYLE")):
+            continue
+        if "-->" in line or _VTT_TIMESTAMP_LINE.match(line) or _VTT_CUE_NUMBER.match(line):
+            continue
+
+        text = _VTT_TAG_PATTERN.sub("", line).strip()
+        if not text or (pieces and pieces[-1] == text):
+            continue
+        pieces.append(text)
+
+    return " ".join(pieces).strip()
+
+
+def fetch_subtitle_transcript(video_id: str) -> str | None:
+    """Reuses a caption track YouTube already has (manual first, then
+    auto-generated) as the transcript, so the pipeline can skip downloading audio
+    and running Whisper entirely — reuse before recompute. Returns None (not an
+    error) when the video simply has no captions in any usable language; callers
+    should fall back to download_audio()/transcribe_audio() in that case.
+    """
+    tmp_dir = Path(tempfile.mkdtemp(prefix="ybkf_sub_"))
+    try:
+        ydl_opts = {
+            "quiet": True,
+            "skip_download": True,
+            "writesubtitles": True,
+            "writeautomaticsub": True,
+            "subtitleslangs": _SUBTITLE_LANG_PRIORITY,
+            "subtitlesformat": "vtt",
+            "outtmpl": str(tmp_dir / f"{video_id}.%(ext)s"),
+            "noplaylist": True,
+        }
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=True)
+        except Exception as exc:
+            raise SubtitleFetchError(str(exc)) from exc
+
+        for lang in _SUBTITLE_LANG_PRIORITY:
+            matches = sorted(tmp_dir.glob(f"{video_id}.{lang}.vtt"))
+            if matches:
+                text = _vtt_to_text(matches[0].read_text(encoding="utf-8"))
+                if text:
+                    return _get_traditional_converter().convert(text)
+
+        # None of the preferred languages were available — accept whatever single
+        # language YouTube actually wrote (e.g. a video with only Japanese captions).
+        any_match = sorted(tmp_dir.glob(f"{video_id}.*.vtt"))
+        if any_match:
+            text = _vtt_to_text(any_match[0].read_text(encoding="utf-8"))
+            if text:
+                return _get_traditional_converter().convert(text)
+
+        return None
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 def download_audio(video_id: str, dest_dir: Path, on_progress: ProgressCallback | None = None) -> Path:

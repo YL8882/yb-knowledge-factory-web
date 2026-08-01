@@ -62,9 +62,15 @@ For TC-6–TC-8: `POST /api/queue` only, confirming the correct HTTP 400 and err
 
 ---
 
-# 4. Known Scope Limitation
+# 4. Known Scope Limitation (superseded)
 
-The current implementation (`app/transcript.py`) always downloads audio and transcribes via Faster Whisper — it never reads YouTube's official or auto-generated caption tracks. This means "video without subtitles" (TC-5) does not exercise a different code path than any other video in this app; it's included to honor the requested test matrix, and the report will note whether behavior was in fact identical to the other cases.
+As of 2026-08-01, `app/transcript.py` now tries YouTube's caption track first
+(`fetch_subtitle_transcript`, manual then auto-generated, via `yt-dlp`) and only
+falls back to downloading audio and transcribing via Faster Whisper when no usable
+caption track exists. "Video without subtitles" (TC-5) therefore does exercise a
+different code path than a captioned video — TC-5 should fall through to the
+download+Whisper path, while other cases with captions should skip audio download
+entirely.
 
 ---
 

@@ -384,21 +384,11 @@ main {
     color: #0b5345;
 }
 
-/* The "Queued" badge becomes this clickable button for an item that hasn't been
-   started yet — same shape as the other badges, but red-filled and inline-flex so
-   the ▶ icon lines up, since it now doubles as the "開始轉錄" call to action. */
-.queue-item-badge.is-start {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    background: #ff0000;
-    color: #fff;
-    cursor: pointer;
-    transition: background 0.2s ease;
-}
-
-.queue-item-badge.is-start:hover {
-    background: #e60000;
+/* Waiting its turn in the sequential pipeline — not yet doing real work, so kept
+   visually calmer than .is-active (which means a step is actually running). */
+.queue-item-badge.is-waiting {
+    background: #eef1f4;
+    color: #64748b;
 }
 
 /* Indeterminate progress bar, shown only while a step is actively running */
