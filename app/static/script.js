@@ -4,6 +4,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const statusDiv = document.getElementById('status');
     const queueList = document.getElementById('queue-list');
     const queueEmpty = document.getElementById('queue-empty');
+    const chooseFolderBtn = document.getElementById('choose-folder-btn');
+    const downloadFolderLabel = document.getElementById('download-folder-label');
     const processingPanel = document.getElementById('processing-panel');
     const processingStagesEl = document.getElementById('processing-stages');
     const processingResultEl = document.getElementById('processing-result');
@@ -11,6 +13,116 @@ document.addEventListener('DOMContentLoaded', function() {
     // The video_id the processing panel is currently showing — the one most recently
     // added via the Generate button. Only one panel, so only one video is tracked.
     let trackedVideoId = null;
+
+    // Remembered download folder (File System Access API, Chrome/Edge only). The handle
+    // itself is persisted in IndexedDB so it survives a page reload; autoDownload() writes
+    // straight into it once permission is confirmed, instead of prompting on every download.
+    let downloadDirHandle = null;
+
+    // Tracks which video_ids have already been auto-saved this session, so renderQueue()
+    // (which re-runs on every poll tick) triggers the actual file write exactly once per
+    // item instead of re-saving on every re-render.
+    const autoSavedTranscripts = new Set();
+    const autoSavedStudyNotes = new Set();
+
+    const FOLDER_DB_NAME = 'ybkf-settings';
+    const FOLDER_STORE_NAME = 'handles';
+    const FOLDER_HANDLE_KEY = 'downloadDir';
+
+    function openFolderDB() {
+        return new Promise(function(resolve, reject) {
+            const request = indexedDB.open(FOLDER_DB_NAME, 1);
+            request.onupgradeneeded = function() {
+                request.result.createObjectStore(FOLDER_STORE_NAME);
+            };
+            request.onsuccess = function() { resolve(request.result); };
+            request.onerror = function() { reject(request.error); };
+        });
+    }
+
+    async function saveDirHandle(handle) {
+        const db = await openFolderDB();
+        return new Promise(function(resolve, reject) {
+            const tx = db.transaction(FOLDER_STORE_NAME, 'readwrite');
+            tx.objectStore(FOLDER_STORE_NAME).put(handle, FOLDER_HANDLE_KEY);
+            tx.oncomplete = resolve;
+            tx.onerror = function() { reject(tx.error); };
+        });
+    }
+
+    async function loadDirHandle() {
+        const db = await openFolderDB();
+        return new Promise(function(resolve, reject) {
+            const tx = db.transaction(FOLDER_STORE_NAME, 'readonly');
+            const req = tx.objectStore(FOLDER_STORE_NAME).get(FOLDER_HANDLE_KEY);
+            req.onsuccess = function() { resolve(req.result || null); };
+            req.onerror = function() { reject(req.error); };
+        });
+    }
+
+    function updateFolderLabel() {
+        downloadFolderLabel.textContent = downloadDirHandle
+            ? '目前下載資料夾：' + downloadDirHandle.name
+            : '';
+        chooseFolderBtn.textContent = downloadDirHandle
+            ? '📁 變更下載資料夾'
+            : '📁 設定下載資料夾';
+    }
+
+    async function ensureDirPermission(handle) {
+        const opts = { mode: 'readwrite' };
+        if ((await handle.queryPermission(opts)) === 'granted') {
+            return true;
+        }
+        return (await handle.requestPermission(opts)) === 'granted';
+    }
+
+    async function chooseDownloadFolder() {
+        if (!window.showDirectoryPicker) {
+            showStatus('此瀏覽器不支援選擇下載資料夾（請改用 Chrome 或 Edge）', 'error');
+            return;
+        }
+        try {
+            const handle = await window.showDirectoryPicker();
+            downloadDirHandle = handle;
+            await saveDirHandle(handle);
+            updateFolderLabel();
+            showStatus('已設定下載資料夾：' + handle.name, 'success');
+        } catch (error) {
+            if (!(error && error.name === 'AbortError')) {
+                showStatus('設定下載資料夾失敗', 'error');
+            }
+        }
+    }
+
+    chooseFolderBtn.addEventListener('click', chooseDownloadFolder);
+
+    // Best-effort restore on page load: only reuse a remembered folder if permission is
+    // still silently granted (queryPermission doesn't prompt); otherwise the user just
+    // picks again via the button, no worse than before this feature existed.
+    (async function restoreDownloadFolder() {
+        try {
+            const handle = await loadDirHandle();
+            if (handle && (await handle.queryPermission({ mode: 'readwrite' })) === 'granted') {
+                downloadDirHandle = handle;
+                updateFolderLabel();
+            }
+        } catch (error) {
+            // IndexedDB unavailable or handle no longer valid — ignore, nothing to restore.
+        }
+    })();
+
+    // Pre-fills the URL input when arriving from the "YB Learn" Chrome extension
+    // (?url=... on the page load), which opens this page after capturing the
+    // current YouTube video. Only pre-fills — does not auto-submit, so Transcript
+    // generation still only starts on an explicit click, same as manual paste.
+    (function prefillUrlFromExtension() {
+        const capturedUrl = new URLSearchParams(window.location.search).get('url');
+        if (capturedUrl) {
+            urlInput.value = capturedUrl;
+            showStatus('已從 YB Learn 帶入網址，請按「加入暫存區」開始處理', 'info');
+        }
+    })();
 
     loadQueue();
 
@@ -134,6 +246,74 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (error) {
             showStatus('網路連線失敗', 'error');
         }
+    }
+
+    // Parses a Content-Disposition header, preferring the RFC 5987 extended form
+    // (filename*=UTF-8''%E4%BD%A0...) that FastAPI/Starlette sends for non-ASCII
+    // filenames (e.g. Chinese video titles) over the plain filename="..." form.
+    function parseFilename(disposition) {
+        if (!disposition) {
+            return null;
+        }
+
+        const extended = disposition.match(/filename\*=[^']*''([^;]+)/i);
+        if (extended) {
+            try {
+                return decodeURIComponent(extended[1]);
+            } catch (error) {
+                // fall through to the plain form below
+            }
+        }
+
+        const plain = disposition.match(/filename="?([^";]+)"?/i);
+        return plain ? plain[1].trim() : null;
+    }
+
+    // Unconditionally downloads a file the moment it's ready — no button, no click.
+    // If a folder has been remembered (chooseDownloadFolder()), it writes straight
+    // into it silently. Otherwise it falls back to a normal browser download
+    // (triggers the browser's own "ask where to save" prompt if the user has that
+    // setting on; no interactive save-picker is attempted here since there is no
+    // user click backing this call to satisfy that API's gesture requirement).
+    async function autoDownload(url, fallbackName) {
+        let response;
+        try {
+            response = await fetch(url);
+        } catch (error) {
+            return false;
+        }
+
+        if (!response.ok) {
+            return false;
+        }
+
+        const filename = parseFilename(response.headers.get('Content-Disposition')) || fallbackName;
+        const blob = await response.blob();
+
+        if (downloadDirHandle) {
+            try {
+                if (await ensureDirPermission(downloadDirHandle)) {
+                    const fileHandle = await downloadDirHandle.getFileHandle(filename, { create: true });
+                    const writable = await fileHandle.createWritable();
+                    await writable.write(blob);
+                    await writable.close();
+                    return true;
+                }
+            } catch (error) {
+                // Remembered folder no longer usable (revoked, deleted, etc.) — fall
+                // through to the plain browser download below.
+            }
+        }
+
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(objectUrl);
+        return true;
     }
 
     // Maps the backend's queue status string to per-step checklist states,
@@ -366,12 +546,27 @@ document.addEventListener('DOMContentLoaded', function() {
 
             queueList.appendChild(li);
 
-            // No browser-side auto-download here: the backend already persists
-            // Transcript/Study Note markdown into outputs/transcripts and
-            // outputs/study_notes the moment each is ready — that's the single
-            // canonical copy. A second browser-triggered download (to the
-            // OS Downloads folder or a chosen folder) would just be a redundant
-            // duplicate of a file that already exists on disk.
+            // Unconditional auto-download the moment each file is ready — no button,
+            // no click. autoSavedTranscripts/autoSavedStudyNotes make sure this only
+            // actually fires once per item per session, even though renderQueue()
+            // re-runs on every poll tick while other items are still processing.
+            if (hasTranscript && !autoSavedTranscripts.has(item.video_id)) {
+                autoSavedTranscripts.add(item.video_id);
+                const transcriptDownloadUrl = '/api/queue/' + encodeURIComponent(item.video_id) + '/transcript/download';
+                const transcriptFilename = 'TN_' + item.title + '_' + item.video_id + '.md';
+                autoDownload(transcriptDownloadUrl, transcriptFilename).then(function(ok) {
+                    if (!ok) autoSavedTranscripts.delete(item.video_id);
+                });
+            }
+
+            if (hasStudyNote && !autoSavedStudyNotes.has(item.video_id)) {
+                autoSavedStudyNotes.add(item.video_id);
+                const studyNoteDownloadUrl = '/api/queue/' + encodeURIComponent(item.video_id) + '/study-note/download';
+                const studyNoteFilename = 'SN_' + item.title + '_' + item.video_id + '.md';
+                autoDownload(studyNoteDownloadUrl, studyNoteFilename).then(function(ok) {
+                    if (!ok) autoSavedStudyNotes.delete(item.video_id);
+                });
+            }
         });
     }
 

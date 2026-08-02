@@ -25,6 +25,7 @@ purpose: Development task list and product backlog.
 - [x] Receive YouTube URL
 - [x] Return success response
 - [x] Extension ↔ Backend connected
+- [x] Auto-open Workspace with captured URL pre-filled
 
 ---
 

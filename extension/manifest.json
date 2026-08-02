@@ -3,6 +3,9 @@
   "name": "YB Learn",
   "version": "0.1.0",
   "description": "YB Knowledge Lite — one-click capture of the current YouTube video.",
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": ["*://www.youtube.com/*"],

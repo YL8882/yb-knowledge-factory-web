@@ -44,6 +44,12 @@ purpose: MVP sprint acceptance checklist.
 - [x] Extension sends URL successfully
 - [x] API returns success response
 
+### Workspace Auto-Open
+
+- [x] Clicking YB Learn opens the Workspace (http://127.0.0.1:8000/) automatically
+- [x] Captured YouTube URL pre-filled into the Workspace input
+- [x] Pre-fill only — Transcript generation still requires an explicit "加入暫存區" click
+
 ### Sprint Result
 
 - [x] Sprint 2 completed

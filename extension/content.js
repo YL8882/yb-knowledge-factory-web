@@ -30,6 +30,14 @@
       const data = await response.json();
       console.log('[YB Learn] Backend response:', data);
       showToast('✓ 已送出至 YB 知識工廠：' + url);
+      console.log('[YB Learn] Sending openWorkspace message to background...');
+      chrome.runtime.sendMessage({ action: 'openWorkspace', url: url }, function () {
+        if (chrome.runtime.lastError) {
+          console.error('[YB Learn] sendMessage failed:', chrome.runtime.lastError.message);
+        } else {
+          console.log('[YB Learn] sendMessage acknowledged by background');
+        }
+      });
     } catch (error) {
       console.error('[YB Learn] Failed to reach backend:', error);
       showToast('✗ 無法連線到後端，請確認伺服器已啟動');
