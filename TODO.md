@@ -1,38 +1,54 @@
 ---
 title: TODO
 product: YB Knowledge Lite
-version: v1.0
+version: v2.0
 status: Active
 purpose: Development task list and product backlog.
 ---
 
 # TODO
 
-## Sprint 1 — Chrome Extension
+> Sprint breakdown kept in sync with `Acceptance_Test.md`.
+
+## Sprint 1 — Chrome Extension ✅ Completed
 
 - [x] Create Chrome Extension project
 - [x] Inject "YB Learn" button into YouTube
 - [x] Detect current YouTube URL
-- [ ] Send URL to Backend API
-- [ ] Show processing status
+- [x] Send URL to Backend API
+- [x] Show processing status
 
 ---
 
-## Sprint 2 — Backend
+## Sprint 2 — Backend API ✅ Completed
 
-- [ ] Receive YouTube URL
+- [x] Receive YouTube URL
+- [x] Return success response
+- [x] Extension ↔ Backend connected
+
+---
+
+## Sprint 3 — Transcript 🔄 In Progress
+
 - [ ] Generate Transcript
-- [ ] Generate Study Note
-- [ ] Store processing result
+- [ ] Transcript Download
+- [ ] Error handling completed
 
 ---
 
-## Sprint 3 — Workspace
+## Sprint 4 — Study Note
 
-- [ ] Display Transcript
-- [ ] Display Study Note
-- [ ] Markdown Export
-- [ ] History Page
+- [ ] Generate Study Note
+- [ ] Content quality verified
+- [ ] Chapter structure correct
+
+---
+
+## Sprint 5 — Markdown Export
+
+- [ ] Markdown generated
+- [ ] Download successful
+- [ ] Markdown format verified
 
 ---
 

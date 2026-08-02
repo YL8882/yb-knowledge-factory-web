@@ -6,6 +6,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -22,6 +23,18 @@ load_dotenv()
 
 app = FastAPI()
 
+# Lets the Chrome extension's content script (running on youtube.com) call
+# this local API — content-script fetch is bound by the same CORS rules as
+# a page script, so without this the browser blocks the request before it
+# ever reaches FastAPI. Scoped to youtube.com + POST only, not "*", since
+# this is a local single-user backend rather than a public API.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://www.youtube.com"],
+    allow_methods=["POST"],
+    allow_headers=["Content-Type"],
+)
+
 # Serve static files
 static_dir = Path(__file__).parent / "static"
 if static_dir.exists():
@@ -29,6 +42,10 @@ if static_dir.exists():
 
 
 class AddVideoRequest(BaseModel):
+    url: str
+
+
+class CaptureRequest(BaseModel):
     url: str
 
 
@@ -52,6 +69,19 @@ async def get_queue():
 @app.get("/api/history")
 async def get_history():
     return {"items": history_store.list_entries()}
+
+
+@app.post("/api/capture")
+async def capture_video(request: CaptureRequest):
+    """Used by the Chrome extension's "YB Learn" button. Validates the URL
+    only — deliberately does not touch queue_store, history_store, or the
+    transcript/study-note pipeline; that wiring is a later sprint's job.
+    """
+    try:
+        video_id = youtube.extract_video_id(request.url)
+    except youtube.InvalidYouTubeURLError:
+        raise HTTPException(status_code=400, detail="無效的 YouTube 網址")
+    return {"status": "success", "video_id": video_id}
 
 
 @app.post("/api/queue")

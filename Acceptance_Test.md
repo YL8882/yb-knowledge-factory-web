@@ -1,80 +1,127 @@
 ---
 title: Acceptance Test
 product: YB Knowledge Lite
-version: v1.0
+version: v2.0
 status: Active
-purpose: MVP acceptance checklist.
+purpose: MVP sprint acceptance checklist.
 ---
 
 # Acceptance Test
 
-## MVP Workflow
+## Sprint 1 — Chrome Extension
+
+### Extension
+
+- [x] Extension installed successfully
+- [x] Loaded from local project
+- [x] No installation errors
+
+### YouTube Integration
+
+- [x] YB Learn button displayed
+- [x] Button position correct
+- [x] Button clickable
+
+### URL Capture
+
+- [x] Current YouTube URL detected
+- [x] Toast notification displayed
+- [x] Console output correct
+- [x] No JavaScript errors
+
+### Sprint Result
+
+- [x] Sprint 1 completed
+
+---
+
+## Sprint 2 — Backend API
+
+### API Connection
+
+- [x] Backend running
+- [x] API reachable
+- [x] Extension sends URL successfully
+- [x] API returns success response
+
+### Sprint Result
+
+- [x] Sprint 2 completed
+
+**Test Date:** 2026-08-02
+**Test Result:** PASS
+
+**Note:** Backend access log 未顯示於目前終端機，原因為背景已有另一個 Uvicorn Process，實際 API 已成功收到 OPTIONS + POST /api/capture 200 OK，功能正常。
+
+---
+
+## Sprint 3 — Transcript
+
+- [ ] Transcript generated
+- [ ] Transcript displayed
+- [ ] Error handling completed
+
+### Sprint Result
+
+- [ ] Sprint 3 completed
+
+---
+
+## Sprint 4 — Study Note
+
+- [ ] Study Note generated
+- [ ] Content quality verified
+- [ ] Chapter structure correct
+
+### Sprint Result
+
+- [ ] Sprint 4 completed
+
+---
+
+## Sprint 5 — Markdown Export
+
+- [ ] Markdown generated
+- [ ] Download successful
+- [ ] Markdown format verified
+
+### Sprint Result
+
+- [ ] Sprint 5 completed
+
+---
+
+# MVP Acceptance
+
+The Lite MVP is complete when:
+
+- [ ] Chrome Extension works
+- [ ] Backend API connected
+- [ ] Transcript generated
+- [ ] Study Note generated
+- [ ] Markdown exported
+- [ ] End-to-end workflow completed
 
 ```text
 YouTube
-
-↓
-
+    ↓
 YB Learn
-
-↓
-
+    ↓
 Transcript
-
-↓
-
+    ↓
 Study Note
-
-↓
-
+    ↓
 Markdown
 ```
-
-The MVP is complete only when the entire workflow succeeds.
-
----
-
-# Chrome Extension
-
-- [x] YB Learn button appears on YouTube
-- [x] Current YouTube URL detected
-- [ ] URL sent to Backend
-- [ ] Processing status displayed
-
----
-
-# Backend
-
-- [ ] Receive YouTube URL
-- [ ] Generate Transcript
-- [ ] Generate Study Note
-- [ ] Return result successfully
-
----
-
-# Workspace
-
-- [ ] Transcript displayed
-- [ ] Study Note displayed
-- [ ] Markdown exported
-- [ ] History updated
-
----
-
-# Final Acceptance
-
-- [ ] End-to-end workflow completed
-- [ ] No manual URL copy required
-- [ ] Study Note quality acceptable
-- [ ] Developer willing to use every day
 
 ---
 
 # Definition of Done
 
-A feature is complete only if:
+A Sprint is complete only if:
 
-- [ ] Feature works
-- [ ] Manual test passed
-- [ ] Existing features unaffected
-- [ ] Acceptance checklist updated
+- [ ] Feature implemented
+- [ ] Manual testing passed
+- [ ] No console errors
+- [ ] Git commit completed
+- [ ] Acceptance Test updated

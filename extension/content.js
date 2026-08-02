@@ -1,15 +1,43 @@
 (function () {
   const BUTTON_ID = 'yb-learn-button';
   const TOAST_ID = 'yb-learn-toast';
+  const API_BASE_URL = 'http://127.0.0.1:8000';
 
   function isWatchPage() {
     return location.pathname === '/watch';
   }
 
-  function onButtonClick() {
+  async function onButtonClick() {
     const url = location.href;
     console.log('[YB Learn] Captured URL:', url);
-    showToast('✓ 已取得網址：' + url);
+
+    const button = document.getElementById(BUTTON_ID);
+    if (button) {
+      button.disabled = true;
+    }
+
+    try {
+      const response = await fetch(API_BASE_URL + '/api/capture', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url }),
+      });
+
+      if (!response.ok) {
+        throw new Error('HTTP ' + response.status);
+      }
+
+      const data = await response.json();
+      console.log('[YB Learn] Backend response:', data);
+      showToast('✓ 已送出至 YB 知識工廠：' + url);
+    } catch (error) {
+      console.error('[YB Learn] Failed to reach backend:', error);
+      showToast('✗ 無法連線到後端，請確認伺服器已啟動');
+    } finally {
+      if (button) {
+        button.disabled = false;
+      }
+    }
   }
 
   function createButton() {
