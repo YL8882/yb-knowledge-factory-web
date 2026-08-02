@@ -20,6 +20,7 @@
 - Sprint 1（Extension 按鈕／URL 擷取）：PASS，程式碼未觸及
 - Sprint 2（`/api/capture`、CORS、自動開啟 Workspace、網址預帶入）：PASS，已於本輪測試中重新驗證 `/api/capture` 仍正常回應
 - Sprint 3（Transcript 產生／顯示／下載）：PASS，已於本輪測試中重新驗證 Transcript 下載端點仍正常
+- Sprint 4（Study Note 產生／顯示／下載）：PASS，使用者驗收通過
 - `extension/content.js` 的 `sendMessage` 修正屬於防禦性強化，不影響既有行為（Workspace 仍會自動開啟）
 
 【Environment】
@@ -35,7 +36,12 @@
   - `GET /api/queue/{id}/study-note/download` → 200，內容與上述格式一致
   - `GET /api/queue/{id}/transcript/download` → 200（Sprint 3 regression）
   - `POST /api/capture` → 200（Sprint 2 regression）
-- Commit：待建立（見下方）
+- Commit：`980736f`（實作），封存確認 commit 見下方
+
+【Sprint 封存】
+- 驗收日期：2026-08-02
+- 驗收結果：PASS
+- 狀態：Sprint 4 已封存，等待 Sprint 5 指示
 
 【尚未完成】
 ⬜ Markdown Export（獨立匯出功能，目前下載的 .md 檔案即為 Markdown，但尚未有整合匯出/打包功能）
