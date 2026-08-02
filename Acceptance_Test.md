@@ -63,13 +63,16 @@ purpose: MVP sprint acceptance checklist.
 
 ## Sprint 3 — Transcript
 
-- [ ] Transcript generated
-- [ ] Transcript displayed
-- [ ] Error handling completed
+- [x] Transcript generated
+- [x] Transcript displayed
+- [x] Error handling completed
 
 ### Sprint Result
 
-- [ ] Sprint 3 completed
+- [x] Sprint 3 completed
+
+**Test Date:** 2026-08-02
+**Test Result:** PASS (verified on an isolated test port — see CHANGELOG for a note on a stray dev-server process on port 8000)
 
 ---
 

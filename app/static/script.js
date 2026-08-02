@@ -9,10 +9,17 @@ document.addEventListener('DOMContentLoaded', function() {
     const processingPanel = document.getElementById('processing-panel');
     const processingStagesEl = document.getElementById('processing-stages');
     const processingResultEl = document.getElementById('processing-result');
+    const transcriptDisplay = document.getElementById('transcript-display');
+    const transcriptContentEl = document.getElementById('transcript-content');
+    const transcriptDownloadBtn = document.getElementById('transcript-download-btn');
 
     // The video_id the processing panel is currently showing — the one most recently
     // added via the Generate button. Only one panel, so only one video is tracked.
     let trackedVideoId = null;
+
+    // video_id whose Transcript is currently shown in the panel — guards against
+    // re-fetching the same file on every poll tick while other items are busy.
+    let displayedTranscriptVideoId = null;
 
     // Remembered download folder (File System Access API, Chrome/Edge only). The handle
     // itself is persisted in IndexedDB so it survives a page reload; autoDownload() writes
@@ -112,15 +119,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     })();
 
-    // Pre-fills the URL input when arriving from the "YB Learn" Chrome extension
-    // (?url=... on the page load), which opens this page after capturing the
-    // current YouTube video. Only pre-fills — does not auto-submit, so Transcript
-    // generation still only starts on an explicit click, same as manual paste.
-    (function prefillUrlFromExtension() {
+    // Auto-starts Transcript download when arriving from the "YB Learn" Chrome
+    // extension (?url=... on the page load), which opens this page right after
+    // capturing the current YouTube video — no further click needed, matching
+    // the YouTube -> YB Learn -> Transcript flow. Manual paste into the input
+    // still requires the explicit "加入暫存區" click, unchanged.
+    (function autoStartFromExtension() {
         const capturedUrl = new URLSearchParams(window.location.search).get('url');
         if (capturedUrl) {
             urlInput.value = capturedUrl;
-            showStatus('已從 YB Learn 帶入網址，請按「加入暫存區」開始處理', 'info');
+            addToQueue(capturedUrl);
         }
     })();
 
@@ -165,9 +173,12 @@ document.addEventListener('DOMContentLoaded', function() {
             // sequential pipeline queue (see main.py _enqueue_for_processing). If
             // other items are still ahead of it, it just waits its turn — no click
             // needed either way.
-            showStatus('已加入暫存區，將依序自動產生 Transcript、Study Note 並下載...', 'success');
+            showStatus('已加入暫存區，將依序自動產生 Transcript 並下載...', 'success');
             urlInput.value = '';
             trackedVideoId = data.video_id;
+            displayedTranscriptVideoId = null;
+            transcriptDisplay.classList.add('is-hidden');
+            transcriptContentEl.textContent = '';
             await loadQueue();
             pollPipelineProgress(data.video_id);
         } catch (error) {
@@ -439,10 +450,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         if (hasTranscript) {
-            // Transcript done, Study Note not chained yet (rare — e.g. old queue.json
-            // entry from before this pipeline existed). Not an error, just not final.
-            p.className = 'queue-item-report';
-            p.textContent = '✓ Transcript 已完成並下載，Study Note 準備中...';
+            // Terminal state as of Sprint 3 — Transcript no longer auto-chains into
+            // Study Note (that's a separate, deliberate Sprint 4 action).
+            p.className = 'queue-item-report is-success';
+            p.textContent = '✅ Transcript 已完成並下載';
             return p;
         }
 
@@ -605,6 +616,32 @@ document.addEventListener('DOMContentLoaded', function() {
         };
     }
 
+    // Fetches and shows the Transcript body inline once it's ready, and points the
+    // download button at the same file. Guarded by displayedTranscriptVideoId so
+    // it only fetches once per item, even though renderProcessingPanel() re-runs
+    // on every poll tick. The file is already auto-downloaded separately (see
+    // autoDownload() in renderQueue) — this is just for on-page display.
+    async function maybeDisplayTranscript(item) {
+        if (!item.transcript_path || displayedTranscriptVideoId === item.video_id) {
+            return;
+        }
+        displayedTranscriptVideoId = item.video_id;
+
+        const downloadUrl = '/api/queue/' + encodeURIComponent(item.video_id) + '/transcript/download';
+        try {
+            const response = await fetch(downloadUrl);
+            if (!response.ok) {
+                return;
+            }
+            transcriptContentEl.textContent = await response.text();
+            transcriptDownloadBtn.href = downloadUrl;
+            transcriptDisplay.classList.remove('is-hidden');
+        } catch (error) {
+            // Best-effort inline display only — the file is already saved to disk
+            // regardless via the auto-download in renderQueue().
+        }
+    }
+
     function renderProcessingPanel(items) {
         const item = trackedVideoId ? items.find(function(i) { return i.video_id === trackedVideoId; }) : null;
 
@@ -615,6 +652,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         processingPanel.classList.remove('is-hidden');
         processingStagesEl.innerHTML = '';
+        maybeDisplayTranscript(item);
 
         const states = computeStageStates(item);
         let hasActive = false;
@@ -659,6 +697,10 @@ document.addEventListener('DOMContentLoaded', function() {
             processingResultEl.className = 'processing-result is-error';
         } else if (!hasActive && states.studynote === 'done') {
             processingResultEl.textContent = '✓ 完成：Transcript、Study Note 已產生並自動下載';
+            processingResultEl.className = 'processing-result is-success';
+        } else if (!hasActive && states.transcript === 'done') {
+            // Terminal state as of Sprint 3 — Study Note is a separate, later step.
+            processingResultEl.textContent = '✓ Transcript 已完成並自動下載';
             processingResultEl.className = 'processing-result is-success';
         } else if (hasActive && typeof item.progress_percent === 'number') {
             // Real percentage from the backend (download bytes, or Whisper segment

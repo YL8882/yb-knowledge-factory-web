@@ -38,6 +38,14 @@
             <div id="processing-panel" class="processing-panel is-hidden">
                 <ol id="processing-stages" class="processing-stages"></ol>
                 <p id="processing-result" class="processing-result"></p>
+
+                <div id="transcript-display" class="transcript-display is-hidden">
+                    <div class="transcript-display-header">
+                        <h3>Transcript</h3>
+                        <a id="transcript-download-btn" class="btn-text-link" href="#" download>⬇ 下載 Transcript.md</a>
+                    </div>
+                    <pre id="transcript-content" class="transcript-content"></pre>
+                </div>
             </div>
 
             <section class="queue-section">
@@ -45,8 +53,10 @@
                     <h2>暫存區</h2>
                     <div class="queue-section-header-actions">
                         <a href="/history" class="btn-text-link">🕘 歷史記錄</a>
+                        <button id="choose-folder-btn" class="btn-text-link" type="button">📁 設定下載資料夾</button>
                     </div>
                 </div>
+                <p id="download-folder-label" class="download-folder-label"></p>
                 <ul id="queue-list" class="queue-list"></ul>
                 <p id="queue-empty" class="queue-empty">尚無項目</p>
             </section>
