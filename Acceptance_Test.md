@@ -78,13 +78,16 @@ purpose: MVP sprint acceptance checklist.
 
 ## Sprint 4 — Study Note
 
-- [ ] Study Note generated
-- [ ] Content quality verified
-- [ ] Chapter structure correct
+- [x] Study Note generated
+- [x] Content quality verified
+- [x] Chapter structure correct
 
 ### Sprint Result
 
-- [ ] Sprint 4 completed
+- [x] Sprint 4 completed
+
+**Test Date:** 2026-08-02
+**Test Result:** PASS (verified on an isolated test port; see Sprint_04_Report.md)
 
 ---
 

@@ -37,11 +37,11 @@ purpose: Development task list and product backlog.
 
 ---
 
-## Sprint 4 — Study Note
+## Sprint 4 — Study Note ✅ Completed
 
-- [ ] Generate Study Note
-- [ ] Content quality verified
-- [ ] Chapter structure correct
+- [x] Generate Study Note
+- [x] Content quality verified
+- [x] Chapter structure correct
 
 ---
 

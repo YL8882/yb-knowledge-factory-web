@@ -30,14 +30,19 @@
       const data = await response.json();
       console.log('[YB Learn] Backend response:', data);
       showToast('✓ 已送出至 YB 知識工廠：' + url);
-      console.log('[YB Learn] Sending openWorkspace message to background...');
-      chrome.runtime.sendMessage({ action: 'openWorkspace', url: url }, function () {
-        if (chrome.runtime.lastError) {
-          console.error('[YB Learn] sendMessage failed:', chrome.runtime.lastError.message);
-        } else {
-          console.log('[YB Learn] sendMessage acknowledged by background');
-        }
-      });
+
+      // Opening the Workspace tab is a convenience on top of an already-successful
+      // capture — its own try/catch keeps a failure here (e.g. a stale extension
+      // context during a dev reload) from being misreported as a backend failure.
+      try {
+        chrome.runtime.sendMessage({ action: 'openWorkspace', url: url }, function () {
+          if (chrome.runtime.lastError) {
+            console.warn('[YB Learn] Could not auto-open Workspace:', chrome.runtime.lastError.message);
+          }
+        });
+      } catch (sendError) {
+        console.warn('[YB Learn] Could not auto-open Workspace:', sendError.message);
+      }
     } catch (error) {
       console.error('[YB Learn] Failed to reach backend:', error);
       showToast('✗ 無法連線到後端，請確認伺服器已啟動');

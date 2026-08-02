@@ -1,5 +1,4 @@
 import re
-from datetime import date
 from pathlib import Path
 
 OUTPUT_DIR = Path(__file__).parent.parent / "outputs" / "study_notes"
@@ -41,28 +40,11 @@ def find_cached_study_note(video_id: str) -> Path | None:
     return matches[0] if matches else None
 
 
-def build_metadata_block(title: str, url: str, tags: str = "") -> str:
-    generated_date = date.today().isoformat()
-    return (
-        "# Study Note\n\n"
-        f"Title: {title}\n\n"
-        f"Source: {url}\n\n"
-        "Author: 未提供\n\n"
-        f"Date: {generated_date}\n\n"
-        "Language: 繁體中文\n\n"
-        f"Tags: {tags}\n\n"
-        "Version: v1.0\n"
-    )
-
-
-def save_study_note(video_id: str, title: str, url: str, body: str, tags: str = "") -> Path:
+def save_study_note(video_id: str, title: str, body: str) -> Path:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     safe_title = _sanitize_filename(title)
     output_path = OUTPUT_DIR / f"SN_{safe_title}_{video_id}.md"
 
-    metadata = build_metadata_block(title, url, tags)
-    content = f"{metadata}\n---\n\n{body}\n"
-
-    output_path.write_text(content, encoding="utf-8")
+    output_path.write_text(body.strip() + "\n", encoding="utf-8")
     return output_path

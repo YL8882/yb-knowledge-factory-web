@@ -12,14 +12,19 @@ document.addEventListener('DOMContentLoaded', function() {
     const transcriptDisplay = document.getElementById('transcript-display');
     const transcriptContentEl = document.getElementById('transcript-content');
     const transcriptDownloadBtn = document.getElementById('transcript-download-btn');
+    const studyNoteDisplay = document.getElementById('study-note-display');
+    const studyNoteContentEl = document.getElementById('study-note-content');
+    const studyNoteDownloadBtn = document.getElementById('study-note-download-btn');
 
     // The video_id the processing panel is currently showing — the one most recently
     // added via the Generate button. Only one panel, so only one video is tracked.
     let trackedVideoId = null;
 
-    // video_id whose Transcript is currently shown in the panel — guards against
-    // re-fetching the same file on every poll tick while other items are busy.
+    // video_id whose Transcript / Study Note is currently shown in the panel —
+    // guards against re-fetching the same file on every poll tick while other
+    // items are busy.
     let displayedTranscriptVideoId = null;
+    let displayedStudyNoteVideoId = null;
 
     // Remembered download folder (File System Access API, Chrome/Edge only). The handle
     // itself is persisted in IndexedDB so it survives a page reload; autoDownload() writes
@@ -173,12 +178,15 @@ document.addEventListener('DOMContentLoaded', function() {
             // sequential pipeline queue (see main.py _enqueue_for_processing). If
             // other items are still ahead of it, it just waits its turn — no click
             // needed either way.
-            showStatus('已加入暫存區，將依序自動產生 Transcript 並下載...', 'success');
+            showStatus('已加入暫存區，將依序自動產生 Transcript、Study Note 並下載...', 'success');
             urlInput.value = '';
             trackedVideoId = data.video_id;
             displayedTranscriptVideoId = null;
+            displayedStudyNoteVideoId = null;
             transcriptDisplay.classList.add('is-hidden');
             transcriptContentEl.textContent = '';
+            studyNoteDisplay.classList.add('is-hidden');
+            studyNoteContentEl.textContent = '';
             await loadQueue();
             pollPipelineProgress(data.video_id);
         } catch (error) {
@@ -450,10 +458,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         if (hasTranscript) {
-            // Terminal state as of Sprint 3 — Transcript no longer auto-chains into
-            // Study Note (that's a separate, deliberate Sprint 4 action).
-            p.className = 'queue-item-report is-success';
-            p.textContent = '✅ Transcript 已完成並下載';
+            // Transient state — Study Note generation auto-follows Transcript
+            // (see main.py _auto_generate_transcript), so this only shows briefly.
+            p.className = 'queue-item-report';
+            p.textContent = '✓ Transcript 已完成並下載，Study Note 產生中...';
             return p;
         }
 
@@ -642,6 +650,29 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // Same pattern as maybeDisplayTranscript() above, for the Study Note file
+    // once study_note_path is set.
+    async function maybeDisplayStudyNote(item) {
+        if (!item.study_note_path || displayedStudyNoteVideoId === item.video_id) {
+            return;
+        }
+        displayedStudyNoteVideoId = item.video_id;
+
+        const downloadUrl = '/api/queue/' + encodeURIComponent(item.video_id) + '/study-note/download';
+        try {
+            const response = await fetch(downloadUrl);
+            if (!response.ok) {
+                return;
+            }
+            studyNoteContentEl.textContent = await response.text();
+            studyNoteDownloadBtn.href = downloadUrl;
+            studyNoteDisplay.classList.remove('is-hidden');
+        } catch (error) {
+            // Best-effort inline display only — the file is already saved to disk
+            // regardless via the auto-download in renderQueue().
+        }
+    }
+
     function renderProcessingPanel(items) {
         const item = trackedVideoId ? items.find(function(i) { return i.video_id === trackedVideoId; }) : null;
 
@@ -653,6 +684,7 @@ document.addEventListener('DOMContentLoaded', function() {
         processingPanel.classList.remove('is-hidden');
         processingStagesEl.innerHTML = '';
         maybeDisplayTranscript(item);
+        maybeDisplayStudyNote(item);
 
         const states = computeStageStates(item);
         let hasActive = false;
@@ -697,10 +729,6 @@ document.addEventListener('DOMContentLoaded', function() {
             processingResultEl.className = 'processing-result is-error';
         } else if (!hasActive && states.studynote === 'done') {
             processingResultEl.textContent = '✓ 完成：Transcript、Study Note 已產生並自動下載';
-            processingResultEl.className = 'processing-result is-success';
-        } else if (!hasActive && states.transcript === 'done') {
-            // Terminal state as of Sprint 3 — Study Note is a separate, later step.
-            processingResultEl.textContent = '✓ Transcript 已完成並自動下載';
             processingResultEl.className = 'processing-result is-success';
         } else if (hasActive && typeof item.progress_percent === 'number') {
             // Real percentage from the backend (download bytes, or Whisper segment

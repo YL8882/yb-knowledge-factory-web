@@ -353,7 +353,7 @@ def _generate_study_note_for_item(video_id: str) -> dict:
     queue_store.update_item(video_id, status="Generating", last_error="", last_error_stage="")
 
     try:
-        result = gemini_client.generate_study_note_body(
+        body = gemini_client.generate_study_note(
             title=item["title"], url=item["url"], transcript_text=transcript_body
         )
     except gemini_client.GeminiConfigError as exc:
@@ -376,9 +376,7 @@ def _generate_study_note_for_item(video_id: str) -> dict:
     output_path = study_note.save_study_note(
         video_id=video_id,
         title=item["title"],
-        url=item["url"],
-        body=result["body"],
-        tags=result["tags"],
+        body=body,
     )
 
     queue_store.update_item(
@@ -396,10 +394,9 @@ def _generate_study_note_for_item(video_id: str) -> dict:
 def _auto_generate_transcript(video_id: str) -> None:
     """Background-task entry point used right after a video is added to the queue,
     and also by /retry for an item that failed before Transcript ever succeeded.
-    Sprint 3 scope: stops at Transcript. Does not auto-chain into Study Note —
-    that stays a deliberate, separate action (POST /api/queue/{id}/study-note)
-    until Sprint 4 wires up its own UI trigger. Swallows failures instead of
-    raising an HTTP error — there is no request left to respond to. A failure
+    Fully automatic pipeline (Sprint 4): Transcript, then (on success) straight
+    into Study Note, with no manual click in between. Swallows failures instead
+    of raising an HTTP error — there is no request left to respond to. A failure
     leaves the item at its last real status with last_error/last_error_stage
     set, so the UI can report exactly what failed and offer a Retry action.
     """
@@ -407,6 +404,11 @@ def _auto_generate_transcript(video_id: str) -> None:
         _generate_transcript_for_item(video_id)
     except TranscriptGenerationError:
         return
+
+    try:
+        _generate_study_note_for_item(video_id)
+    except StudyNoteGenerationError:
+        pass
 
 
 def _retry_study_note_only(video_id: str) -> None:
@@ -460,15 +462,16 @@ async def _resume_pending_queue_items() -> None:
     Oldest-added first, so resumed items keep the same order they'd have processed
     in originally. Items with a recorded last_error are left alone — retry is a
     deliberate user action (POST /retry), not something that should auto-loop on a
-    video that's known to be broken (e.g. region-locked). Items that already have
-    a transcript are also left alone — since Sprint 3, nothing auto-continues past
-    Transcript into Study Note, so there is nothing left to auto-resume for them.
+    video that's known to be broken (e.g. region-locked).
     """
     items = sorted(queue_store.list_items(), key=lambda item: item["created_at"])
     for item in items:
-        if item.get("last_error") or item.get("transcript_path"):
+        if item.get("last_error") or item.get("study_note_path"):
             continue
-        _enqueue_for_processing(item["video_id"], kind="full")
+        if item.get("transcript_path"):
+            _enqueue_for_processing(item["video_id"], kind="study_note_only")
+        else:
+            _enqueue_for_processing(item["video_id"], kind="full")
 
 
 @app.post("/api/queue/{video_id}/start")
