@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "YB Learn",
+  "version": "0.1.0",
+  "description": "YB Knowledge Lite — one-click capture of the current YouTube video.",
+  "content_scripts": [
+    {
+      "matches": ["*://www.youtube.com/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}
