@@ -59,11 +59,21 @@ Known Intermittent Issue（Study Note 偶發卡住／下載階段失敗）已調
 
 ---
 
-## Sprint 5 — Markdown Export
+## Sprint 5 — Knowledge Package Export
 
-- [ ] Markdown generated
-- [ ] Download successful
-- [ ] Markdown format verified
+重新定義範圍：Transcript.md / Study_Note.md 皆已產生，不再需要 Markdown Generate；改為將既有 Markdown 檔案整理成單一知識包。
+
+### Task 1 — Markdown Package Export ✅ Completed
+
+- [x] 每支影片完成後可匯出單一知識包（.zip）：`<Video Title>/Transcript.md`、`<Video Title>/Study_Note.md`
+- [x] 手動下載（Queue 列表「📦 下載知識包」按鈕）
+- [x] 內容驗證（zip 完整性、內部結構正確）
+
+僅新增 Export Layer（`app/knowledge_package.py`、`GET /api/queue/{video_id}/export`），未修改 Workflow 或 AI Pipeline。
+
+未來可擴充（不在本次範圍）：`Metadata.md`、`Images/`、`Prompt.md`
+
+### Task 2 — 待指示
 
 ---
 

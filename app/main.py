@@ -10,10 +10,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.background import BackgroundTask
 
 import error_messages
 import gemini_client
 import history_store
+import knowledge_package
 import queue_store
 import study_note
 import transcript as transcript_service
@@ -742,6 +744,43 @@ async def download_study_note(video_id: str):
         study_note_path,
         media_type="text/markdown",
         filename=Path(study_note_path).name,
+    )
+
+
+@app.get("/api/queue/{video_id}/export")
+async def export_package(video_id: str):
+    """Knowledge Package Export (Sprint 5, Task 1): zips the already-generated
+    Transcript.md + Study_Note.md into one `<Video Title>/` package. Export
+    Layer only — reads existing output files, does not touch the Transcript /
+    Study Note pipeline.
+    """
+    try:
+        item = queue_store.get_item(video_id)
+    except queue_store.QueueItemNotFoundError:
+        raise HTTPException(status_code=404, detail="項目不存在")
+
+    transcript_path = item.get("transcript_path")
+    if not transcript_path or not Path(transcript_path).exists():
+        raise HTTPException(status_code=404, detail="Transcript 檔案不存在")
+
+    study_note_path = item.get("study_note_path")
+    if not study_note_path or not Path(study_note_path).exists():
+        raise HTTPException(status_code=404, detail="Study Note 檔案不存在")
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="ybkf_export_"))
+    zip_path = knowledge_package.build_package(
+        dest_dir=tmp_dir,
+        title=item["title"],
+        video_id=video_id,
+        transcript_path=transcript_path,
+        study_note_path=study_note_path,
+    )
+
+    return FileResponse(
+        zip_path,
+        media_type="application/zip",
+        filename=zip_path.name,
+        background=BackgroundTask(shutil.rmtree, tmp_dir, ignore_errors=True),
     )
 
 

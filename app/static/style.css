@@ -586,6 +586,27 @@ main {
     background: #ffecec;
 }
 
+.queue-item-export {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    border: 1px solid #2f80ed;
+    background: none;
+    color: #2f80ed;
+    font-size: 0.85em;
+    font-family: inherit;
+    padding: 6px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.2s ease;
+}
+
+.queue-item-export:hover {
+    background: #eaf2fe;
+}
+
 .queue-empty {
     color: #bdc3c7;
     text-align: center;

@@ -112,15 +112,24 @@ Not a Sprint 5 (Markdown Export) deliverable — stabilization patch between Spr
 
 ---
 
-## Sprint 5 — Markdown Export
+## Sprint 5 — Knowledge Package Export
 
-- [ ] Markdown generated
-- [ ] Download successful
-- [ ] Markdown format verified
+重新定義範圍：不再是 Markdown Generate（Transcript.md / Study_Note.md 已存在），改為將既有 Markdown 檔案整理成單一知識包。
+
+### Task 1 — Markdown Package Export
+
+- [x] 每支影片完成後可匯出單一知識包（`.zip`）
+- [x] 匯出結構：`<Video Title>/Transcript.md`、`<Video Title>/Study_Note.md`
+- [x] 下載成功（瀏覽器點擊「📦 下載知識包」按鈕，下載並解壓縮驗證內容正確）
+
+**Test Date:** 2026-08-03
+**Test Result:** PASS
+
+**過程記錄：** 首次人工驗收發現 `GET /api/queue/{video_id}/export` 回傳 404；RCA 定位為 port 8000 上同時有新舊兩個 server process 殘留（舊 process 未終止），實際回應請求的是不含新路由的舊 process，非程式碼問題。終止舊 process（PID 17364、13608）後，僅保留新 process（PID 2000、27776），重新測試 route 回應 200、zip 結構正確，人工驗收通過。
 
 ### Sprint Result
 
-- [ ] Sprint 5 completed
+- [ ] Sprint 5 completed（Task 1 完成，待後續 Task 指示）
 
 ---
 

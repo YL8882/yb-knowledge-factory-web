@@ -591,6 +591,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 li.appendChild(retryBtn);
             }
 
+            // Knowledge Package Export (Sprint 5, Task 1): manual, separate from the
+            // auto-download of the individual Transcript.md / Study_Note.md files
+            // below — zips both into one <Video Title>/ package on click.
+            if (hasStudyNote) {
+                const exportBtn = document.createElement('a');
+                exportBtn.className = 'queue-item-export';
+                exportBtn.href = '/api/queue/' + encodeURIComponent(item.video_id) + '/export';
+                exportBtn.innerHTML = '<span aria-hidden="true">📦</span> 下載知識包';
+                li.appendChild(exportBtn);
+            }
+
             queueList.appendChild(li);
 
             // Unconditional auto-download the moment each file is ready — no button,

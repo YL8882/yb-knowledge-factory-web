@@ -28,6 +28,10 @@ purpose: Track added, changed, fixed, and removed functionality per release.
 
 ## 2026-08-03
 
+### Added
+- `GET /api/queue/{video_id}/export`：將已產生的 `Transcript.md` + `Study_Note.md` 打包成單一知識包（`.zip`），結構為 `<Video Title>/Transcript.md`、`<Video Title>/Study_Note.md`
+- Queue 列表新增「📦 下載知識包」按鈕（項目完成後顯示）
+
 ### Changed
 - `POST /transcript`、`POST /study-note` 改走與自動流程相同的單一 worker thread（Single Execution Path），不再各自繞過單一 worker 保證
 - Workspace 頁面移除 Transcript 內嵌預覽區塊，僅預覽 Study Note（Transcript 仍會自動下載）
