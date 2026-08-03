@@ -275,17 +275,17 @@ main {
     color: #c0392b;
 }
 
-.transcript-display {
+.note-preview {
     margin-top: 16px;
     padding-top: 16px;
     border-top: 1px solid #eceff2;
 }
 
-.transcript-display.is-hidden {
+.note-preview.is-hidden {
     display: none;
 }
 
-.transcript-display-header {
+.note-preview-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -293,12 +293,12 @@ main {
     margin-bottom: 8px;
 }
 
-.transcript-display-header h3 {
+.note-preview-header h3 {
     font-size: 0.95em;
     color: #0f0f0f;
 }
 
-.transcript-content {
+.note-preview-content {
     max-height: 320px;
     overflow-y: auto;
     padding: 12px;
@@ -427,6 +427,11 @@ main {
 .queue-item-badge.is-waiting {
     background: #eef1f4;
     color: #64748b;
+}
+
+.queue-item-badge.is-error {
+    background: #fdf1f0;
+    color: #c0392b;
 }
 
 /* Indeterminate progress bar, shown only while a step is actively running */

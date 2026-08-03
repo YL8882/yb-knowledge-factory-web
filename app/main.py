@@ -130,14 +130,45 @@ class TranscriptGenerationError(Exception):
     pass
 
 
+# Stage Guard: a linear rank over the pipeline's real states, used to make
+# POST /transcript and POST /study-note idempotent and Forward Only — a repeat
+# call once a stage is already reached must return the existing result, never
+# pull the Job backward into Downloading/Transcribing/Generating again.
+# "Study Note Ready" is the terminal state; there is no separate "Completed"
+# status string anywhere in the backend.
+_STAGE_RANK = {
+    "Queued": 0,
+    "Downloading": 1,
+    "Transcribing": 2,
+    "Transcript Ready": 3,
+    "Generating": 4,
+    "Study Note Ready": 5,
+}
+
+
+def _stage_rank(status: str) -> int:
+    return _STAGE_RANK.get(status, 0)
+
+
 def _generate_transcript_for_item(video_id: str) -> dict:
     item = queue_store.get_item(video_id)
 
+    # Stage Guard: Transcript already reached or passed — return the existing
+    # result instead of re-running the pipeline. Regeneration is intentionally
+    # out of scope here; a future POST /transcript/regenerate or ?force=true is
+    # where that would live, not here.
+    if _stage_rank(item.get("status", "")) >= 3 and item.get("transcript_path"):
+        return {
+            "video_id": video_id,
+            "status": item["status"],
+            "transcript": Path(item["transcript_path"]).read_text(encoding="utf-8"),
+            "file_path": item["transcript_path"],
+            "summary": item.get("summary", ""),
+        }
+
     # Processing cache: reuse existing output files for this video instead of
     # re-downloading audio / re-running Whisper. Only applies the first time this
-    # item is processed in the current session (no transcript_path yet) — an
-    # explicit "重新產生 Transcript" click already has transcript_path set on the
-    # item and always falls through to the real reprocessing below.
+    # item is processed in the current session (no transcript_path yet).
     if not item.get("transcript_path"):
         cached_transcript_path = transcript_service.find_cached_transcript(video_id)
         if cached_transcript_path:
@@ -316,23 +347,68 @@ class StudyNoteGenerationError(Exception):
 
 
 def _generate_study_note_for_item(video_id: str) -> dict:
+    """Workflow Recovery: thin wrapper around _do_generate_study_note()
+    guaranteeing that ANY exception — not just the ones _do_generate_study_note()
+    already anticipates — gets recorded on the item before it propagates. Without
+    this, an unexpected exception here would have been swallowed silently by
+    _auto_generate_transcript()'s `except StudyNoteGenerationError: pass`, leaving
+    the item frozen at "Transcript Ready" forever with zero trace of what
+    happened (the bug that caused the stuck-Job investigation).
+    """
+    try:
+        return _do_generate_study_note(video_id)
+    except StudyNoteGenerationError:
+        raise
+    except Exception as exc:
+        # Genuinely unexpected — not one of the specific error types
+        # _do_generate_study_note() already handles and records itself. Record
+        # the real exception type/message as-is rather than running it through
+        # error_messages.classify_error(), so the true cause stays visible.
+        queue_store.update_item(
+            video_id,
+            status="Transcript Ready",
+            last_error="未預期錯誤（" + type(exc).__name__ + "）：" + str(exc),
+            last_error_stage="studynote",
+        )
+        raise StudyNoteGenerationError(str(exc)) from exc
+
+
+def _do_generate_study_note(video_id: str) -> dict:
     item = queue_store.get_item(video_id)
+
+    # Stage Guard: Study Note already reached — return the existing result
+    # instead of re-running the pipeline. Regeneration is intentionally out of
+    # scope here; a future POST /study-note/regenerate or ?force=true is where
+    # that would live, not here.
+    if _stage_rank(item.get("status", "")) >= 5 and item.get("study_note_path"):
+        return {
+            "video_id": video_id,
+            "status": item["status"],
+            "study_note": Path(item["study_note_path"]).read_text(encoding="utf-8"),
+            "file_path": item["study_note_path"],
+        }
 
     transcript_path = item.get("transcript_path")
     if not transcript_path:
+        queue_store.update_item(
+            video_id, last_error="請先產生 Transcript", last_error_stage="studynote"
+        )
         raise StudyNoteGenerationError("請先產生 Transcript")
 
     try:
         transcript_content = study_note.read_transcript(transcript_path)
     except study_note.TranscriptNotFoundError as exc:
+        queue_store.update_item(
+            video_id, last_error="Transcript 檔案不存在", last_error_stage="studynote"
+        )
         raise StudyNoteGenerationError("Transcript 檔案不存在") from exc
 
     transcript_body = study_note.extract_transcript_body(transcript_content)
 
-    # Processing cache: only applies to a first-time generation (no study_note_path
-    # on the item yet). An explicit "重新產生 Study Note" call already has
-    # study_note_path set on the item and always falls through to a real Gemini
-    # call below — regeneration must never be silently skipped by the cache.
+    # Processing cache: first-time generation only (the Stage Guard above already
+    # handles "study_note_path already set" by returning early) — this covers a
+    # Study_Note.md that exists on disk from an earlier run but isn't reflected
+    # on this queue item yet (e.g. queue.json was reset but outputs/ wasn't).
     if not item.get("study_note_path"):
         cached_study_note_path = study_note.find_cached_study_note(video_id)
         if cached_study_note_path:
@@ -433,6 +509,44 @@ _pipeline_queue: "pyqueue.Queue[tuple[str, str]]" = pyqueue.Queue()
 _worker_started = False
 _worker_start_lock = threading.Lock()
 
+# Single Execution Path (方案 A): lets a synchronous HTTP handler submit a job
+# through the exact same _pipeline_queue / worker thread every other job uses,
+# and block until that specific job finishes — used by the manual /transcript
+# and /study-note endpoints below, which previously called
+# _generate_*_for_item() directly on FastAPI's own thread pool, bypassing the
+# single-worker guarantee entirely. This is not a second lock: nothing here
+# guards concurrent execution — it only lets a caller wait for a result that
+# the one real worker thread produces.
+_job_events: dict[str, threading.Event] = {}
+_job_outcomes: dict[str, tuple[bool, object]] = {}
+_job_registry_lock = threading.Lock()
+
+
+def _record_job_outcome(video_id: str, success: bool, payload: object) -> None:
+    with _job_registry_lock:
+        event = _job_events.get(video_id)
+        if event is not None:
+            _job_outcomes[video_id] = (success, payload)
+            event.set()
+
+
+def _await_job(video_id: str, kind: str, timeout: float = 600.0):
+    event = threading.Event()
+    with _job_registry_lock:
+        _job_events[video_id] = event
+    _enqueue_for_processing(video_id, kind=kind)
+
+    finished = event.wait(timeout=timeout)
+    with _job_registry_lock:
+        _job_events.pop(video_id, None)
+        success, payload = _job_outcomes.pop(video_id, (False, None))
+
+    if not finished:
+        raise TimeoutError(f"處理逾時：{video_id} 未在 {timeout} 秒內完成")
+    if success:
+        return payload
+    raise payload
+
 
 def _pipeline_worker_loop() -> None:
     while True:
@@ -440,8 +554,47 @@ def _pipeline_worker_loop() -> None:
         try:
             if kind == "study_note_only":
                 _retry_study_note_only(video_id)
+            elif kind == "transcript_only_sync":
+                # Manual /transcript endpoint — same _generate_transcript_for_item()
+                # as before, just now only ever invoked from this one worker
+                # thread. Caught broadly (not just TranscriptGenerationError) so
+                # _await_job()'s waiter always gets *something* back instead of
+                # timing out on a bug here; whichever exception type it is gets
+                # re-raised on the waiting side exactly as it would have been
+                # before this change.
+                try:
+                    result = _generate_transcript_for_item(video_id)
+                except Exception as exc:
+                    _record_job_outcome(video_id, False, exc)
+                else:
+                    _record_job_outcome(video_id, True, result)
+            elif kind == "study_note_only_sync":
+                # Manual /study-note endpoint — same _generate_study_note_for_item()
+                # as before, same reasoning as transcript_only_sync above.
+                try:
+                    result = _generate_study_note_for_item(video_id)
+                except Exception as exc:
+                    _record_job_outcome(video_id, False, exc)
+                else:
+                    _record_job_outcome(video_id, True, result)
             else:
                 _auto_generate_transcript(video_id)
+        except Exception as exc:
+            # Workflow Recovery: a single job's unexpected failure must never
+            # kill this thread — without a top-level catch here, an uncaught
+            # exception propagates out of the `while True` loop entirely, the
+            # thread dies, `_worker_started` never resets, and every job added
+            # afterward sits in _pipeline_queue forever with nothing consuming
+            # it, until the process is restarted. Best-effort record it on the
+            # item so it isn't silently invisible in the UI either.
+            try:
+                queue_store.update_item(
+                    video_id,
+                    last_error="Worker 發生未預期錯誤（" + type(exc).__name__ + "）：" + str(exc),
+                    last_error_stage="studynote" if kind == "study_note_only" else "transcript",
+                )
+            except Exception:
+                pass
         finally:
             _pipeline_queue.task_done()
 
@@ -513,13 +666,18 @@ async def retry_processing(video_id: str):
 
 @app.post("/api/queue/{video_id}/transcript")
 def generate_transcript(video_id: str):
+    """Single Execution Path (方案 A): submits through the same
+    _pipeline_queue / single worker thread as every other job instead of
+    calling _generate_transcript_for_item() directly — the actual work and
+    error handling are unchanged, only how it's dispatched.
+    """
     try:
         queue_store.get_item(video_id)
     except queue_store.QueueItemNotFoundError:
         raise HTTPException(status_code=404, detail="項目不存在")
 
     try:
-        return _generate_transcript_for_item(video_id)
+        return _await_job(video_id, kind="transcript_only_sync")
     except TranscriptGenerationError as exc:
         # _generate_transcript_for_item already recorded the correct stage
         # (download vs transcript) on the item before raising — reuse it instead
@@ -530,13 +688,18 @@ def generate_transcript(video_id: str):
 
 @app.post("/api/queue/{video_id}/study-note")
 def generate_study_note(video_id: str):
+    """Single Execution Path (方案 A): submits through the same
+    _pipeline_queue / single worker thread as every other job instead of
+    calling _generate_study_note_for_item() directly — the actual work and
+    error handling are unchanged, only how it's dispatched.
+    """
     try:
         queue_store.get_item(video_id)
     except queue_store.QueueItemNotFoundError:
         raise HTTPException(status_code=404, detail="項目不存在")
 
     try:
-        return _generate_study_note_for_item(video_id)
+        return _await_job(video_id, kind="study_note_only_sync")
     except StudyNoteGenerationError as exc:
         detail = str(exc)
         if detail == "請先產生 Transcript":

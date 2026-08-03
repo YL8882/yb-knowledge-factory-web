@@ -39,20 +39,15 @@
                 <ol id="processing-stages" class="processing-stages"></ol>
                 <p id="processing-result" class="processing-result"></p>
 
-                <div id="transcript-display" class="transcript-display is-hidden">
-                    <div class="transcript-display-header">
-                        <h3>Transcript</h3>
-                        <a id="transcript-download-btn" class="btn-text-link" href="#" download>⬇ 下載 Transcript.md</a>
-                    </div>
-                    <pre id="transcript-content" class="transcript-content"></pre>
-                </div>
-
-                <div id="study-note-display" class="transcript-display is-hidden">
-                    <div class="transcript-display-header">
+                <!-- Workspace previews Study Note only — Transcript is an
+                     intermediate product: still auto-downloaded as Transcript.md,
+                     just not shown here. -->
+                <div id="study-note-display" class="note-preview is-hidden">
+                    <div class="note-preview-header">
                         <h3>Study Note</h3>
                         <a id="study-note-download-btn" class="btn-text-link" href="#" download>⬇ 下載 Study_Note.md</a>
                     </div>
-                    <pre id="study-note-content" class="transcript-content"></pre>
+                    <pre id="study-note-content" class="note-preview-content"></pre>
                 </div>
             </div>
 

@@ -9,9 +9,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const processingPanel = document.getElementById('processing-panel');
     const processingStagesEl = document.getElementById('processing-stages');
     const processingResultEl = document.getElementById('processing-result');
-    const transcriptDisplay = document.getElementById('transcript-display');
-    const transcriptContentEl = document.getElementById('transcript-content');
-    const transcriptDownloadBtn = document.getElementById('transcript-download-btn');
     const studyNoteDisplay = document.getElementById('study-note-display');
     const studyNoteContentEl = document.getElementById('study-note-content');
     const studyNoteDownloadBtn = document.getElementById('study-note-download-btn');
@@ -20,10 +17,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // added via the Generate button. Only one panel, so only one video is tracked.
     let trackedVideoId = null;
 
-    // video_id whose Transcript / Study Note is currently shown in the panel —
-    // guards against re-fetching the same file on every poll tick while other
-    // items are busy.
-    let displayedTranscriptVideoId = null;
+    // video_id whose Study Note is currently shown in the panel — guards against
+    // re-fetching the same file on every poll tick while other items are busy.
     let displayedStudyNoteVideoId = null;
 
     // Remembered download folder (File System Access API, Chrome/Edge only). The handle
@@ -181,10 +176,7 @@ document.addEventListener('DOMContentLoaded', function() {
             showStatus('已加入暫存區，將依序自動產生 Transcript、Study Note 並下載...', 'success');
             urlInput.value = '';
             trackedVideoId = data.video_id;
-            displayedTranscriptVideoId = null;
             displayedStudyNoteVideoId = null;
-            transcriptDisplay.classList.add('is-hidden');
-            transcriptContentEl.textContent = '';
             studyNoteDisplay.classList.add('is-hidden');
             studyNoteContentEl.textContent = '';
             await loadQueue();
@@ -212,12 +204,22 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // True while the fully-automatic backend pipeline (Downloading -> Transcribing ->
-    // Generating) still has real work in flight, or hasn't started yet but hasn't
-    // failed either. False once it reaches a terminal state (Study Note Ready, or
-    // a failure recorded via last_error — nothing auto-retries a failure, so
-    // polling forever on a failed "Queued" item would be wasted work).
+    // Transcript Ready -> Generating) still has real work in flight, or hasn't
+    // started yet but hasn't failed either. False once it reaches a terminal state
+    // (Study Note Ready, or a failure recorded via last_error — nothing
+    // auto-retries a failure, so polling forever on a failed "Queued" item would
+    // be wasted work).
+    //
+    // "Transcript Ready" is included here even though the backend normally
+    // passes through it near-instantly on its way to "Generating"
+    // (or straight to "Study Note Ready" on a cache hit) — without it, a poll tick
+    // that happens to land exactly on that transitional status would stop polling
+    // one step early via clearInterval() in pollPipelineProgress(), before Study
+    // Note Ready is ever observed, leaving the UI stuck showing "Generating Study
+    // Note" forever with nothing left to refresh it.
     function isPipelineActive(item) {
-        if (item.status === 'Downloading' || item.status === 'Transcribing' || item.status === 'Generating') {
+        if (item.status === 'Downloading' || item.status === 'Transcribing'
+            || item.status === 'Transcript Ready' || item.status === 'Generating') {
             return true;
         }
         return item.status === 'Queued' && !item.last_error;
@@ -433,6 +435,33 @@ document.addEventListener('DOMContentLoaded', function() {
         return list;
     }
 
+    // Display State Mapping: the backend's internal status strings
+    // (queue_store / main.py) are untouched — this is a UI-only presentation
+    // layer translating them into the Job State vocabulary the Queue UI shows.
+    // Backend Internal State -> Display State:
+    //   Queued           -> Waiting
+    //   Downloading      -> Processing
+    //   Transcribing     -> Processing
+    //   Transcript Ready -> Generating Study Note
+    //   Generating       -> Generating Study Note
+    //   Study Note Ready -> Completed
+    //   (last_error set) -> Error
+    const DISPLAY_STATE_MAP = {
+        'Queued': 'Waiting',
+        'Downloading': 'Processing',
+        'Transcribing': 'Processing',
+        'Transcript Ready': 'Generating Study Note',
+        'Generating': 'Generating Study Note',
+        'Study Note Ready': 'Completed',
+    };
+
+    function displayState(item) {
+        if (item.last_error) {
+            return 'Error';
+        }
+        return DISPLAY_STATE_MAP[item.status] || item.status;
+    }
+
     // Human-readable label for last_error_stage, used in the per-item completion /
     // failure report line.
     const STAGE_REPORT_LABELS = {
@@ -498,22 +527,21 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // Everything now starts automatically on add (see main.py
             // _enqueue_for_processing) and runs through one sequential pipeline, so
-            // "Queued" just means "waiting its turn" — a plain status label, not a
-            // call to action.
+            // "Waiting" just means "waiting its turn" — a plain status label, not a
+            // call to action. Badge text uses the Display State Mapping above;
+            // badge color/class is still driven by the underlying backend status.
             const badge = document.createElement('span');
             badge.className = 'queue-item-badge';
-            if (isWaitingInLine) {
+            if (item.last_error) {
+                badge.classList.add('is-error');
+            } else if (isWaitingInLine) {
                 badge.classList.add('is-waiting');
-                badge.textContent = '排隊中';
             } else if (item.status === 'Downloading' || item.status === 'Transcribing' || item.status === 'Generating') {
                 badge.classList.add('is-active');
-                badge.textContent = item.status;
             } else if (item.status === 'Transcript Ready' || item.status === 'Study Note Ready') {
                 badge.classList.add('is-done');
-                badge.textContent = item.status;
-            } else {
-                badge.textContent = item.status;
             }
+            badge.textContent = displayState(item);
 
             const removeBtn = document.createElement('button');
             removeBtn.className = 'queue-item-remove';
@@ -624,52 +652,43 @@ document.addEventListener('DOMContentLoaded', function() {
         };
     }
 
-    // Fetches and shows the Transcript body inline once it's ready, and points the
-    // download button at the same file. Guarded by displayedTranscriptVideoId so
-    // it only fetches once per item, even though renderProcessingPanel() re-runs
-    // on every poll tick. The file is already auto-downloaded separately (see
+    // Fetches and shows the Study Note body inline once it's ready, and points the
+    // download button at the same file. Guarded by displayedStudyNoteVideoId so it
+    // only fetches once per item, even though renderProcessingPanel() re-runs on
+    // every poll tick. The file is already auto-downloaded separately (see
     // autoDownload() in renderQueue) — this is just for on-page display.
-    async function maybeDisplayTranscript(item) {
-        if (!item.transcript_path || displayedTranscriptVideoId === item.video_id) {
-            return;
-        }
-        displayedTranscriptVideoId = item.video_id;
-
-        const downloadUrl = '/api/queue/' + encodeURIComponent(item.video_id) + '/transcript/download';
-        try {
-            const response = await fetch(downloadUrl);
-            if (!response.ok) {
-                return;
-            }
-            transcriptContentEl.textContent = await response.text();
-            transcriptDownloadBtn.href = downloadUrl;
-            transcriptDisplay.classList.remove('is-hidden');
-        } catch (error) {
-            // Best-effort inline display only — the file is already saved to disk
-            // regardless via the auto-download in renderQueue().
-        }
-    }
-
-    // Same pattern as maybeDisplayTranscript() above, for the Study Note file
-    // once study_note_path is set.
+    //
+    // Workspace previews Study Note only — Transcript is an intermediate
+    // product, still auto-downloaded as Transcript.md but not shown.
     async function maybeDisplayStudyNote(item) {
         if (!item.study_note_path || displayedStudyNoteVideoId === item.video_id) {
             return;
         }
         displayedStudyNoteVideoId = item.video_id;
 
+        // Reads the already-generated Study_Note.md file straight off disk via
+        // the existing download endpoint — never calls Gemini or regenerates
+        // anything, this is display-only.
         const downloadUrl = '/api/queue/' + encodeURIComponent(item.video_id) + '/study-note/download';
         try {
             const response = await fetch(downloadUrl);
             if (!response.ok) {
+                // Reset the guard on failure so the next poll tick retries
+                // instead of giving up on this video_id forever — previously
+                // this returned without resetting displayedStudyNoteVideoId, so
+                // a single transient failure (e.g. the file briefly not
+                // readable) permanently blocked the Preview from ever showing,
+                // even once the file was fine.
+                displayedStudyNoteVideoId = null;
                 return;
             }
             studyNoteContentEl.textContent = await response.text();
             studyNoteDownloadBtn.href = downloadUrl;
             studyNoteDisplay.classList.remove('is-hidden');
         } catch (error) {
-            // Best-effort inline display only — the file is already saved to disk
-            // regardless via the auto-download in renderQueue().
+            // Same reasoning as above — network hiccup shouldn't permanently
+            // block the Preview from ever retrying.
+            displayedStudyNoteVideoId = null;
         }
     }
 
@@ -683,7 +702,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
         processingPanel.classList.remove('is-hidden');
         processingStagesEl.innerHTML = '';
-        maybeDisplayTranscript(item);
         maybeDisplayStudyNote(item);
 
         const states = computeStageStates(item);
