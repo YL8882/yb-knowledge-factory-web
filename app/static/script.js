@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const queueList = document.getElementById('queue-list');
     const queueEmpty = document.getElementById('queue-empty');
     const chooseFolderBtn = document.getElementById('choose-folder-btn');
+    const exportAllBtn = document.getElementById('export-all-btn');
     const downloadFolderLabel = document.getElementById('download-folder-label');
     const processingPanel = document.getElementById('processing-panel');
     const processingStagesEl = document.getElementById('processing-stages');
@@ -103,6 +104,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     chooseFolderBtn.addEventListener('click', chooseDownloadFolder);
+    exportAllBtn.addEventListener('click', exportAllPackages);
 
     // Best-effort restore on page load: only reuse a remembered folder if permission is
     // still silently granted (queryPermission doesn't prompt); otherwise the user just
@@ -335,6 +337,35 @@ document.addEventListener('DOMContentLoaded', function() {
         link.remove();
         URL.revokeObjectURL(objectUrl);
         return true;
+    }
+
+    // Bulk Knowledge Package Export (Sprint 5, Task 2): unlike autoDownload()
+    // above (best-effort, silent failure), this surfaces a clear message via
+    // showStatus() on failure — e.g. no completed items yet, or the backend
+    // refused because a candidate item's Transcript.md / Study_Note.md turned
+    // out to be missing on disk (all-or-nothing, no partial zip produced).
+    async function exportAllPackages() {
+        try {
+            const response = await fetch('/api/queue/export-all');
+            if (!response.ok) {
+                const data = await response.json().catch(function() { return {}; });
+                showStatus(data.detail || '匯出知識包失敗', 'error');
+                return;
+            }
+
+            const filename = parseFilename(response.headers.get('Content-Disposition')) || 'YB_Knowledge_Packages.zip';
+            const blob = await response.blob();
+            const objectUrl = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = objectUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(objectUrl);
+        } catch (error) {
+            showStatus('網路連線失敗', 'error');
+        }
     }
 
     // Maps the backend's queue status string to per-step checklist states,

@@ -31,6 +31,8 @@ purpose: Track added, changed, fixed, and removed functionality per release.
 ### Added
 - `GET /api/queue/{video_id}/export`：將已產生的 `Transcript.md` + `Study_Note.md` 打包成單一知識包（`.zip`），結構為 `<Video Title>/Transcript.md`、`<Video Title>/Study_Note.md`
 - Queue 列表新增「📦 下載知識包」按鈕（項目完成後顯示）
+- `GET /api/queue/export-all`：一次把所有已完成影片打包成單一知識包 zip，結構為 `<Video Title>_<video_id>/Transcript.md`、`Study_Note.md`
+- Queue 列表新增「📦 匯出全部知識包」按鈕
 
 ### Changed
 - `POST /transcript`、`POST /study-note` 改走與自動流程相同的單一 worker thread（Single Execution Path），不再各自繞過單一 worker 保證
@@ -44,3 +46,4 @@ purpose: Track added, changed, fixed, and removed functionality per release.
 - 前端輪詢在「Transcript Ready」過渡狀態會提早停止，導致畫面停留在「Generating Study Note」不再更新
 - Study Note 預覽讀取失敗後不會重試，永久無法顯示
 - Chrome Extension 開啟 Workspace 時偶發「message port closed before a response was received」
+- 批次匯出知識包（`export-all`）時，資料夾名稱若含 Emoji（BMP 之外字元）會導致 Windows 內建解壓縮工具判定整個 zip 無效；`knowledge_package._sanitize_filename()` 改為白名單邏輯，僅保留中文/英文/數字/空白/`-`/`_`/`()`/`[]`

@@ -784,6 +784,43 @@ async def export_package(video_id: str):
     )
 
 
+@app.get("/api/queue/export-all")
+async def export_all_packages():
+    """Bulk Knowledge Package Export (Sprint 5, Task 2): packages every
+    completed (Study Note Ready) item into one zip, one
+    `<Video Title>_<video_id>/` folder per video. Export Layer only — reads
+    existing queue_store items and output files, does not touch the
+    Transcript / Study Note pipeline.
+    """
+    candidates = [
+        item for item in queue_store.list_items()
+        if item.get("transcript_path") and item.get("study_note_path")
+    ]
+
+    if not candidates:
+        raise HTTPException(status_code=404, detail="目前沒有已完成的知識包可匯出")
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="ybkf_export_all_"))
+    try:
+        zip_path = knowledge_package.build_bulk_package(dest_dir=tmp_dir, items=candidates)
+    except knowledge_package.IncompletePackageError as exc:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        missing_desc = "、".join(
+            f"{title}（缺少 {filename}）" for _, title, filename in exc.args[0]
+        )
+        raise HTTPException(
+            status_code=422,
+            detail=f"以下影片的知識包不完整，已取消匯出：{missing_desc}",
+        )
+
+    return FileResponse(
+        zip_path,
+        media_type="application/zip",
+        filename=zip_path.name,
+        background=BackgroundTask(shutil.rmtree, tmp_dir, ignore_errors=True),
+    )
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="127.0.0.1", port=8000)

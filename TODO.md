@@ -73,7 +73,17 @@ Known Intermittent Issue（Study Note 偶發卡住／下載階段失敗）已調
 
 未來可擴充（不在本次範圍）：`Metadata.md`、`Images/`、`Prompt.md`
 
-### Task 2 — 待指示
+### Task 2 — Bulk Knowledge Package Export ✅ Completed
+
+- [x] Queue 列表新增「📦 匯出全部知識包」按鈕，一次打包所有已完成影片
+- [x] Zip 結構：`Knowledge.zip` → `<Video Title>_<video_id>/Transcript.md` + `Study_Note.md`，`video_id` 後綴避免不同影片互相覆蓋
+- [x] 完整性檢查：任一影片缺少 Transcript.md 或 Study_Note.md，整批匯出直接中止並回傳明確錯誤，不產生不完整 ZIP
+
+僅新增 Export Layer（`app/knowledge_package.py` 的 `build_bulk_package()`、`GET /api/queue/export-all`），未修改 Workflow 或 AI Pipeline。
+
+**修正記錄：** 首次人工驗收下載後 Windows 內建解壓縮顯示「壓縮資料夾無效」。RCA 確認 zip 本身完全正常（`zipfile.testzip()` 通過、WinRAR 可正常開啟），根本原因是資料夾名稱含 Emoji（BMP 之外字元），Windows 內建解壓縮工具對此不相容。修正 `app/knowledge_package.py` 的 `_sanitize_filename()`，改為白名單邏輯（僅保留中文、英文、數字、空白、`-`、`_`、`()`、`[]`，移除 Emoji 與控制字元），修正後重新驗收通過。
+
+### Task 3 — 待指示
 
 ---
 
