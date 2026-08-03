@@ -33,11 +33,15 @@ purpose: Track added, changed, fixed, and removed functionality per release.
 - Queue 列表新增「📦 下載知識包」按鈕（項目完成後顯示）
 - `GET /api/queue/export-all`：一次把所有已完成影片打包成單一知識包 zip，結構為 `<Video Title>_<video_id>/Transcript.md`、`Study_Note.md`
 - Queue 列表新增「📦 匯出全部知識包」按鈕
+- `GET /api/history/{video_id}/export`：History 頁面單支知識包下載（依磁碟實際檔案，不依賴 Queue 資料）
+- `GET /api/history/{video_id}/transcript`、`GET /api/history/{video_id}/study-note`：在新分頁開啟內容，不強制下載
+- `GET /api/history` 回應新增 `transcript_exists`／`study_note_exists` 衍生欄位
 
 ### Changed
 - `POST /transcript`、`POST /study-note` 改走與自動流程相同的單一 worker thread（Single Execution Path），不再各自繞過單一 worker 保證
 - Workspace 頁面移除 Transcript 內嵌預覽區塊，僅預覽 Study Note（Transcript 仍會自動下載）
 - Chrome Extension 改為重用既有 Workspace 分頁（Single Workspace），不再每次都開新分頁
+- History 頁面重新定位為 Knowledge Library：清單改為卡片，每張卡片顯示 Transcript／Study Note／Knowledge Package 狀態，並提供下載知識包（主要按鈕）、開啟 Transcript／Study Note、回到 YouTube（次要按鈕）
 
 ### Fixed
 - `POST /transcript`、`POST /study-note` 重複呼叫已完成的階段時，會被拉回重跑（新增 Stage Guard，Forward Only）

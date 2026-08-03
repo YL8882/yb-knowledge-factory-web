@@ -7,7 +7,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
@@ -70,7 +70,21 @@ async def get_queue():
 
 @app.get("/api/history")
 async def get_history():
-    return {"items": history_store.list_entries()}
+    """Knowledge Library (Sprint 5, Task 3): augments each history_store entry
+    with derived (not stored) transcript_exists / study_note_exists flags, so
+    the History page can show per-video status without history_store.py
+    tracking file paths itself. Builds new dicts rather than mutating the
+    entries history_store.list_entries() returns, since those are the same
+    objects held in its live in-memory list.
+    """
+    items = []
+    for entry in history_store.list_entries():
+        items.append({
+            **entry,
+            "transcript_exists": transcript_service.find_cached_transcript(entry["video_id"]) is not None,
+            "study_note_exists": study_note.find_cached_study_note(entry["video_id"]) is not None,
+        })
+    return {"items": items}
 
 
 @app.post("/api/capture")
@@ -819,6 +833,68 @@ async def export_all_packages():
         filename=zip_path.name,
         background=BackgroundTask(shutil.rmtree, tmp_dir, ignore_errors=True),
     )
+
+
+@app.get("/api/history/{video_id}/export")
+async def export_history_package(video_id: str):
+    """Knowledge Library (Sprint 5, Task 3): single-video Knowledge Package
+    download from the History page — video_id may no longer be in
+    queue_store at all (e.g. removed from the Queue to free up space), so
+    this looks the files up on disk via the same find_cached_* functions the
+    pipeline's own processing cache already uses, and reuses the existing
+    knowledge_package.build_package() Task 1 already built. Export/History
+    Layer only — does not touch queue_store or history_store's write paths.
+    """
+    entry = next(
+        (e for e in history_store.list_entries() if e["video_id"] == video_id), None
+    )
+    if entry is None:
+        raise HTTPException(status_code=404, detail="歷史紀錄中找不到這支影片")
+
+    transcript_path = transcript_service.find_cached_transcript(video_id)
+    study_note_path = study_note.find_cached_study_note(video_id)
+    if not transcript_path or not study_note_path:
+        raise HTTPException(status_code=404, detail="知識包不完整，Transcript 或 Study Note 檔案缺失")
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="ybkf_history_export_"))
+    zip_path = knowledge_package.build_package(
+        dest_dir=tmp_dir,
+        title=entry["title"],
+        video_id=video_id,
+        transcript_path=str(transcript_path),
+        study_note_path=str(study_note_path),
+    )
+
+    return FileResponse(
+        zip_path,
+        media_type="application/zip",
+        filename=zip_path.name,
+        background=BackgroundTask(shutil.rmtree, tmp_dir, ignore_errors=True),
+    )
+
+
+@app.get("/api/history/{video_id}/transcript", response_class=PlainTextResponse)
+async def view_history_transcript(video_id: str):
+    """Knowledge Library (Sprint 5, Task 3): "開啟 Transcript" — returns the
+    raw content with no Content-Disposition header, so the browser displays
+    it in a new tab instead of forcing a download (unlike the existing Queue
+    page's /transcript/download, which is deliberately an attachment).
+    """
+    transcript_path = transcript_service.find_cached_transcript(video_id)
+    if not transcript_path:
+        raise HTTPException(status_code=404, detail="Transcript 檔案不存在")
+    return transcript_path.read_text(encoding="utf-8")
+
+
+@app.get("/api/history/{video_id}/study-note", response_class=PlainTextResponse)
+async def view_history_study_note(video_id: str):
+    """Knowledge Library (Sprint 5, Task 3): "開啟 Study Note" — same reasoning
+    as view_history_transcript() above.
+    """
+    study_note_path = study_note.find_cached_study_note(video_id)
+    if not study_note_path:
+        raise HTTPException(status_code=404, detail="Study Note 檔案不存在")
+    return study_note_path.read_text(encoding="utf-8")
 
 
 if __name__ == "__main__":

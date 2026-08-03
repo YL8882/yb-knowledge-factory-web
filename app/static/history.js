@@ -14,6 +14,26 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // Knowledge Package status (Sprint 5, Task 3) is derived, not stored —
+    // complete only when both Transcript and Study Note files still exist on
+    // disk (history_store.py itself only ever tracks video_id/title/url/date).
+    function buildStatusBadge(label, exists) {
+        const li = document.createElement('li');
+        li.className = 'library-status-row';
+
+        const labelEl = document.createElement('span');
+        labelEl.className = 'library-status-label';
+        labelEl.textContent = label;
+
+        const badge = document.createElement('span');
+        badge.className = 'queue-item-badge ' + (exists ? 'is-done' : 'is-error');
+        badge.textContent = exists ? '✓ 已產生' : '⚠ 缺失';
+
+        li.appendChild(labelEl);
+        li.appendChild(badge);
+        return li;
+    }
+
     function renderHistory(items) {
         historyList.innerHTML = '';
 
@@ -25,28 +45,91 @@ document.addEventListener('DOMContentLoaded', function() {
         historyEmpty.style.display = 'none';
 
         items.forEach(function(item) {
-            const li = document.createElement('li');
-            li.className = 'queue-item';
+            const hasTranscript = Boolean(item.transcript_exists);
+            const hasStudyNote = Boolean(item.study_note_exists);
+            const isComplete = hasTranscript && hasStudyNote;
+
+            const card = document.createElement('div');
+            card.className = 'library-card';
 
             const header = document.createElement('div');
-            header.className = 'queue-item-header';
+            header.className = 'library-card-header';
 
             const titleLink = document.createElement('a');
-            titleLink.className = 'queue-item-title queue-item-title-link';
+            titleLink.className = 'library-card-title';
             titleLink.href = item.url;
             titleLink.target = '_blank';
             titleLink.rel = 'noopener noreferrer';
             titleLink.textContent = item.title;
-
             header.appendChild(titleLink);
-            li.appendChild(header);
 
-            const dateEl = document.createElement('p');
-            dateEl.className = 'queue-item-report';
-            dateEl.textContent = new Date(item.added_at).toLocaleString('zh-TW');
-            li.appendChild(dateEl);
+            const dateEl = document.createElement('span');
+            dateEl.className = 'library-card-date';
+            dateEl.textContent = new Date(item.added_at).toLocaleDateString('zh-TW');
+            header.appendChild(dateEl);
 
-            historyList.appendChild(li);
+            card.appendChild(header);
+
+            const statusList = document.createElement('ul');
+            statusList.className = 'library-status-list';
+            statusList.appendChild(buildStatusBadge('Transcript', hasTranscript));
+            statusList.appendChild(buildStatusBadge('Study Note', hasStudyNote));
+            statusList.appendChild(buildStatusBadge('Knowledge Package', isComplete));
+            card.appendChild(statusList);
+
+            // Primary action: Knowledge Package download — the main reason to
+            // visit this page, so it gets its own visually prominent row,
+            // separate from the secondary "open" actions below.
+            if (isComplete) {
+                const primaryRow = document.createElement('div');
+                primaryRow.className = 'library-primary-action';
+
+                const downloadBtn = document.createElement('a');
+                downloadBtn.className = 'btn-primary library-download-btn';
+                downloadBtn.href = '/api/history/' + encodeURIComponent(item.video_id) + '/export';
+                downloadBtn.innerHTML = '<span aria-hidden="true">📦</span> 下載知識包';
+                primaryRow.appendChild(downloadBtn);
+
+                card.appendChild(primaryRow);
+            }
+
+            // Secondary actions: viewing individual files / going back to the
+            // source video. Kept visually separate from the primary download
+            // button so it doesn't compete for attention.
+            const secondaryRow = document.createElement('div');
+            secondaryRow.className = 'library-secondary-actions';
+
+            if (hasTranscript) {
+                const openTranscript = document.createElement('a');
+                openTranscript.className = 'btn-text-link';
+                openTranscript.href = '/api/history/' + encodeURIComponent(item.video_id) + '/transcript';
+                openTranscript.target = '_blank';
+                openTranscript.rel = 'noopener noreferrer';
+                openTranscript.innerHTML = '<span aria-hidden="true">📄</span> Transcript';
+                secondaryRow.appendChild(openTranscript);
+            }
+
+            if (hasStudyNote) {
+                const openStudyNote = document.createElement('a');
+                openStudyNote.className = 'btn-text-link';
+                openStudyNote.href = '/api/history/' + encodeURIComponent(item.video_id) + '/study-note';
+                openStudyNote.target = '_blank';
+                openStudyNote.rel = 'noopener noreferrer';
+                openStudyNote.innerHTML = '<span aria-hidden="true">🧠</span> Study Note';
+                secondaryRow.appendChild(openStudyNote);
+            }
+
+            const backToYoutube = document.createElement('a');
+            backToYoutube.className = 'btn-text-link';
+            backToYoutube.href = item.url;
+            backToYoutube.target = '_blank';
+            backToYoutube.rel = 'noopener noreferrer';
+            backToYoutube.innerHTML = '<span aria-hidden="true">▶</span> YouTube';
+            secondaryRow.appendChild(backToYoutube);
+
+            card.appendChild(secondaryRow);
+
+            historyList.appendChild(card);
         });
     }
 });

@@ -614,6 +614,89 @@ main {
     padding: 20px 0;
 }
 
+/* Knowledge Library (Sprint 5, Task 3) — card grid replacing the old
+   chronological history list; each card represents one video's Knowledge
+   Package rather than just a log entry. */
+.library-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.library-card {
+    display: flex;
+    flex-direction: column;
+    padding: 18px 20px;
+    border: 1px solid #e5e8ec;
+    border-radius: 10px;
+    background: #fafbfc;
+}
+
+.library-card-header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 12px;
+}
+
+.library-card-title {
+    font-weight: 600;
+    color: #0f0f0f;
+    text-decoration: none;
+}
+
+.library-card-title:hover {
+    color: #ff0000;
+    text-decoration: underline;
+}
+
+.library-card-date {
+    font-size: 0.8em;
+    color: #94a3b8;
+}
+
+.library-status-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 14px;
+    padding-top: 10px;
+    border-top: 1px solid #eceff2;
+}
+
+.library-status-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.85em;
+}
+
+.library-status-label {
+    color: #64748b;
+}
+
+/* Primary action (Knowledge Package download) gets its own visually
+   prominent row, separate from the secondary "open" actions below, so the
+   main reason to visit this page doesn't compete for attention with four
+   equally-weighted buttons. */
+.library-primary-action {
+    margin-bottom: 10px;
+}
+
+.library-download-btn {
+    width: 100%;
+    text-decoration: none;
+}
+
+.library-secondary-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    padding-top: 10px;
+    border-top: 1px solid #eceff2;
+}
+
 footer {
     text-align: center;
     margin-top: 40px;

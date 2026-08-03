@@ -138,9 +138,23 @@ Not a Sprint 5 (Markdown Export) deliverable — stabilization patch between Spr
 
 **過程記錄：** 首次人工驗收下載成功但 Windows 內建解壓縮顯示「壓縮資料夾無效」。RCA 確認：`build_bulk_package()` 有正確在 `zf.close()` 後才回傳、`FileResponse` 回傳內容與建立內容一致、`zipfile.testzip()` 通過、WinRAR 可正常開啟 —— 確認 zip 本身完全正常，非建立流程或 FileResponse 問題。進一步比對 43 個資料夾名稱，唯一異常是其中一個含有 🔥（Emoji，BMP 之外字元），為 Windows 內建解壓縮工具已知的相容性限制。修正 `app/knowledge_package.py` 的 `_sanitize_filename()` 為白名單邏輯（保留中文/英文/數字/空白/`-`/`_`/`()`/`[]`，移除 Emoji 與控制字元）後，重新下載驗證：zip 大小改變（確認內容真的更新）、`testzip()` 通過、資料夾名稱不再含 BMP 之外字元，人工重新驗收通過（所有資料夾文件正常）。
 
+### Task 3 — Knowledge Library UI
+
+History 頁面重新定位為 Knowledge Library：每支影片一張卡片，展示 Knowledge Package 而不只是紀錄。
+
+- [x] 每張卡片顯示 Transcript／Study Note／Knowledge Package 三項狀態
+- [x] 「📦 下載知識包」為主要按鈕，與「開啟 Transcript」「開啟 Study Note」「回到 YouTube」次要按鈕視覺區隔
+- [x] 「開啟 Transcript」「開啟 Study Note」在新分頁顯示內容，不強制下載
+- [x] 缺檔情境：Study Note／Knowledge Package 正確顯示「⚠ 缺失」，下載按鈕與對應開啟按鈕正確隱藏，Transcript 開啟按鈕不受影響（獨立判斷）
+
+**Test Date:** 2026-08-03
+**Test Result:** PASS
+
+**過程記錄：** 人工驗收過程中兩度懷疑程式邏輯有誤（正常情境畫面缺少狀態列與按鈕；缺檔情境下載按鈕未隱藏、Transcript 開啟按鈕誤消失）。逐一比對 server 實際回應與硬碟原始檔案（`diff` 結果完全一致）、直接呼叫 `GET /api/history` 確認資料正確，確認程式碼本身無誤；兩次現象皆為瀏覽器快取舊版 `history.js`／`history.html`／`style.css` 造成，強制重新整理（Ctrl+Shift+R）後正常情境與缺檔情境共 12 項檢查全數通過。測試用暫時移除的 `Study_Note.md` 已還原。過程中另發現一個獨立既有缺口：Queue 頁面的下載按鈕只檢查 `queue_store` 的 path 欄位、未驗證檔案是否還在磁碟上，已記錄於 Product Backlog，非本次範圍。
+
 ### Sprint Result
 
-- [ ] Sprint 5 completed（Task 1、Task 2 完成，待後續 Task 指示）
+- [ ] Sprint 5 completed（Task 1、Task 2、Task 3 完成，待後續 Task 指示）
 
 ---
 
