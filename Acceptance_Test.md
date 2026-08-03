@@ -91,6 +91,27 @@ purpose: MVP sprint acceptance checklist.
 
 ---
 
+## Sprint 4.1 — Workflow Stabilization
+
+Not a Sprint 5 (Markdown Export) deliverable — stabilization patch between Sprint 4 and Sprint 5. See `Sprint_04.1_Workflow_Stabilization_Report.md` for full RCA and test log.
+
+- [x] 全新影片 → Transcript → Study Note → Preview → Download → Completed
+- [x] Single Queue
+- [x] Single Worker
+- [x] Stage Guard（Forward Only）
+- [x] Workflow Forward Only
+
+### Sprint Result
+
+- [x] Sprint 4.1 completed
+
+**Test Date:** 2026-08-03
+**Test Result:** PASS
+
+**Known Intermittent Issue:** Study Note 偶發卡住／下載階段失敗（`last_error_stage=download`）觀察到 2 次，個別重測、獨立 yt-dlp 診斷、密集情境重現測試（Run 1～3、Run 6）均無法重現，未發現與影片長度或 Transcript 大小相關的固定規律。列為 Known Intermittent Issue，移入 Product Backlog 觀察，不視為本次阻擋項，亦不視為已永久解決。
+
+---
+
 ## Sprint 5 — Markdown Export
 
 - [ ] Markdown generated
