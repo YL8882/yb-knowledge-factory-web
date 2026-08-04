@@ -166,9 +166,23 @@ History 頁面新增「📦 匯出全部知識包」按鈕，依磁碟實際檔�
 
 **過程記錄：** 人工驗收分三個情境進行。情境 1／2（頁面顯示、正常匯出）以既有真實資料直接測試。情境「部分缺檔」與「全部缺檔」的測試資料由 Assistant 建立與復原：分別將特定影片的 `Study_Note.md`（部分缺檔情境：2 個檔案）與全部 96 個 `Study_Note.md`（全部缺檔情境）暫時移至 Repository 外的暫存目錄，測試後依還原清單（manifest）移回原位，過程未修改 `outputs/history.json`／`outputs/queue.json`，也未由使用者手動搬移或編輯任何檔案。每次還原後皆重新計算磁碟上「Transcript + Study Note 皆存在」的項目數與 `git status` 異動筆數，確認與測試前基準一致（完整項目數 87、study_notes 檔案數 96、`git status` 未追蹤檔案數 127 不變），確認 Repository 未留下任何測試殘留。
 
+### Task 5 — Queue Export Disk-Verification Parity
+
+Queue 頁面的匯出行為改為磁碟驗證，比照 History（Task 4）：`GET /api/queue` 新增 `transcript_exists`／`study_note_exists` 衍生欄位，「📦 下載知識包」按鈕依此顯示；`GET /api/queue/export-all` 候選判斷改用磁碟實際檔案，缺檔項目自動排除、不再整批中止。
+
+- [x] 正常情境：Queue 全部完整 → 各項目按鈕正常顯示 → 「匯出全部知識包」下載成功，ZIP 內容正確
+- [x] 部分缺檔情境：缺 Study Note 的項目「下載知識包」按鈕消失，不計入本次匯出；其餘完整項目正常匯出，不整批失敗；Queue 其他功能與 History 頁面不受影響
+- [x] 全部缺檔情境：不下載空 ZIP，畫面顯示明確錯誤訊息「目前沒有已完成的知識包可匯出」
+- [x] 單支下載（`GET /api/queue/{video_id}/export`）行為不受影響：缺檔時正確回傳 404「Study Note 檔案不存在」
+
+**Test Date:** 2026-08-04
+**Test Result:** PASS
+
+**過程記錄：** 人工驗收共 3 個情境，過程中出現兩次需要 RCA 才能釐清的誤判：(1) 全部缺檔情境首次回報 FAIL——直接對執行中的伺服器重現同一請求，確認 Backend 判斷完全正確（回傳預期的 404），根本原因是瀏覽器 Downloads 資料夾殘留 10 個先前測試留下的同名 `YB_Knowledge_Packages*.zip`，使用者誤認為是這次點擊產生的新下載；清空 Downloads 並強制重新整理（Ctrl+Shift+R）後，重新驗證「Network 面板確實送出 `GET /api/queue/export-all`、無新檔案寫入 Downloads、畫面正確顯示無可匯出訊息」，非程式問題。(2) 重建全部缺檔測試資料的過程中，一度誤判「Queue 仍有完整影片」，經比對確認該影片實際只存在於 `history.json`（101 筆中不屬於 Queue 44 筆的其中一筆），與本次 Queue 範圍的測試資料無關。測試用暫時移出的 44 個 `Study_Note.md` 已全部還原，`git status` 未追蹤與已修改檔案數與測試前基準一致（未追蹤 127、新增修改僅 `app/main.py`／`app/static/script.js` 兩個檔案），確認 Repository 未留下任何測試殘留。
+
 ### Sprint Result
 
-- [ ] Sprint 5 completed（Task 1、Task 2、Task 3、Task 4 完成，待後續 Task 指示）
+- [ ] Sprint 5 completed（Task 1、Task 2、Task 3、Task 4、Task 5 完成，待後續 Task 指示）
 
 ---
 

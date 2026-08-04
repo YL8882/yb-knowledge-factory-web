@@ -65,7 +65,21 @@ async def history_page():
 
 @app.get("/api/queue")
 async def get_queue():
-    return {"items": queue_store.list_items()}
+    """Queue list — items augmented (Sprint 5, Task 5) with derived
+    transcript_exists / study_note_exists flags, same pattern as
+    GET /api/history (Task 3), so the Queue page can gate the "download
+    package" button on actual disk state rather than trusting queue_store's
+    possibly-stale path fields. queue_store.py itself is untouched — this is
+    a read-time augmentation only, identical in shape to get_history() above.
+    """
+    items = []
+    for item in queue_store.list_items():
+        items.append({
+            **item,
+            "transcript_exists": transcript_service.find_cached_transcript(item["video_id"]) is not None,
+            "study_note_exists": study_note.find_cached_study_note(item["video_id"]) is not None,
+        })
+    return {"items": items}
 
 
 @app.get("/api/history")
@@ -800,16 +814,29 @@ async def export_package(video_id: str):
 
 @app.get("/api/queue/export-all")
 async def export_all_packages():
-    """Bulk Knowledge Package Export (Sprint 5, Task 2): packages every
-    completed (Study Note Ready) item into one zip, one
-    `<Video Title>_<video_id>/` folder per video. Export Layer only — reads
-    existing queue_store items and output files, does not touch the
-    Transcript / Study Note pipeline.
+    """Bulk Knowledge Package Export (Sprint 5, Task 2; disk-verification
+    parity added in Task 5): packages every Queue item whose Transcript.md
+    and Study_Note.md both still exist on disk into one zip, one
+    `<Video Title>_<video_id>/` folder per video. Items missing a file on
+    disk are silently excluded rather than aborting the whole batch — same
+    auto-exclude semantics as /api/history/export-all (Task 4), since one
+    stale queue_store record shouldn't block everyone else's download.
+    Export Layer only — reads existing queue_store items and output files
+    via the same find_cached_* lookups GET /api/queue and GET /api/history
+    already use, and reuses knowledge_package.build_bulk_package() unchanged;
+    does not touch the Transcript / Study Note pipeline.
     """
-    candidates = [
-        item for item in queue_store.list_items()
-        if item.get("transcript_path") and item.get("study_note_path")
-    ]
+    candidates = []
+    for item in queue_store.list_items():
+        transcript_path = transcript_service.find_cached_transcript(item["video_id"])
+        study_note_path = study_note.find_cached_study_note(item["video_id"])
+        if transcript_path and study_note_path:
+            candidates.append({
+                "video_id": item["video_id"],
+                "title": item["title"],
+                "transcript_path": str(transcript_path),
+                "study_note_path": str(study_note_path),
+            })
 
     if not candidates:
         raise HTTPException(status_code=404, detail="目前沒有已完成的知識包可匯出")

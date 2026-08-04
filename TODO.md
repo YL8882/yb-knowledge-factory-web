@@ -107,6 +107,18 @@ History 頁面重新定位為 **Knowledge Library**：不再只是瀏覽紀錄�
 
 與 Task 2（`GET /api/queue/export-all`）的差異：Task 2 採「整批中止」（任一項目缺檔則全部取消），Task 4 採「自動排除」（缺檔影片不計入，其餘正常匯出）——因為 History 頁面本來就允許單一影片缺檔（Task 3 卡片邏輯），沿用 Task 2 的中止語意並不合理。
 
+### Task 5 — Queue Export Disk-Verification Parity ✅ Completed
+
+- [x] `GET /api/queue` 回應新增 `transcript_exists`／`study_note_exists` 衍生欄位（比照 `GET /api/history`）
+- [x] Queue 列表「📦 下載知識包」按鈕改依磁碟實際檔案顯示，不再只信任 `queue_store` 的 path 欄位
+- [x] `GET /api/queue/export-all` 候選判斷改用磁碟實際檔案，缺檔項目自動排除、不再讓整批匯出中止（語意比照 Task 4 `/api/history/export-all`）
+
+僅修改 `app/main.py`、`app/static/script.js`；沿用既有 `knowledge_package.build_package()`／`build_bulk_package()`，未新增第二套 zip 建立邏輯；未修改 Workflow、Queue Pipeline、Stage Guard、Single Worker、Transcript／Study Note 產生流程、History UI、`queue_store.py`（僅讀取，未新增寫入）。卡片上「Transcript／Study Note ✓ 已產生」的 checklist 文字維持原本邏輯（依 `item.status` 判斷流程進度，非磁碟驗證）——刻意不動，因為那是 Workflow 顯示邏輯，不在本次 Export Layer 範圍內。
+
+呼應並收斂 Product Backlog 中「Queue 頁面下載按鈕未驗證磁碟」的已知缺口（Task 3、Task 4 過程記錄中皆有提及）。
+
+**過程記錄：** 人工驗收共進行 3 個情境，過程中出現兩次誤判需要 RCA 才能釐清：(1) Scenario 3（全部缺檔）首次測試顯示「FAIL」——實際重現與程式碼分析後確認，Backend 邏輯完全正確（直接呼叫 API 得到正確的 404），根本原因是瀏覽器 Downloads 資料夾殘留 10 個先前測試留下的同名 zip 檔案，使用者誤認為是這次點擊產生的新下載；清空 Downloads 後配合強制重新整理重測即正確重現「不下載、顯示無可匯出訊息」。(2) 重建 Scenario 3 過程中一度誤判「仍有完整影片」，經確認該影片實際只存在於 `history.json`（101 筆中不在 Queue 44 筆內的其中一筆），與本次 Queue 測試範圍無關，非測試資料建立錯誤。兩次誤判皆與程式碼本身無關，最終在乾淨的瀏覽器狀態下重新驗收，情境 1／2／3 全數 PASS。
+
 ---
 
 ## Acceptance
@@ -149,4 +161,3 @@ Future versions only.
 - [ ] iOS App
 - [ ] Known Intermittent Issue 觀察追蹤（Study Note 偶發卡住／下載階段失敗，目前無法穩定重現；若再次出現需以完整 Log 重新開啟 RCA）
 - [ ] `error_messages.classify_error()` stage 判斷精確度改善（避免下載階段錯誤誤標為 Gemini 額度問題）
-- [ ] Queue 頁面（`GET /api/queue/{video_id}/export`、`export-all`）的下載按鈕比照 History 頁面，改為驗證檔案是否仍在磁碟上，而不只是檢查 `queue_store` 的 path 欄位是否存在

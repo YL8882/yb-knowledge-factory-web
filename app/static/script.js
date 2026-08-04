@@ -598,6 +598,12 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             const hasStudyNote = Boolean(item.study_note_path);
+            // Export button eligibility (Sprint 5, Task 5): disk-verified via
+            // transcript_exists/study_note_exists, separate from hasTranscript/
+            // hasStudyNote above (which reflect queue_store's pipeline-progress
+            // path fields and drive the status badge/checklist/report line —
+            // untouched here since that's workflow display, not export gating).
+            const canExportPackage = Boolean(item.transcript_exists) && Boolean(item.study_note_exists);
             const isBusy = item.status === 'Downloading' || item.status === 'Transcribing' || item.status === 'Generating';
 
             if (isBusy) {
@@ -624,8 +630,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // Knowledge Package Export (Sprint 5, Task 1): manual, separate from the
             // auto-download of the individual Transcript.md / Study_Note.md files
-            // below — zips both into one <Video Title>/ package on click.
-            if (hasStudyNote) {
+            // below — zips both into one <Video Title>/ package on click. Gated on
+            // canExportPackage (Task 5), not hasStudyNote, so the button doesn't
+            // appear for a stale queue_store record whose file is gone from disk.
+            if (canExportPackage) {
                 const exportBtn = document.createElement('a');
                 exportBtn.className = 'queue-item-export';
                 exportBtn.href = '/api/queue/' + encodeURIComponent(item.video_id) + '/export';

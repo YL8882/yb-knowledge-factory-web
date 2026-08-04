@@ -57,3 +57,8 @@ purpose: Track added, changed, fixed, and removed functionality per release.
 ### Added
 - `GET /api/history/export-all`：History 頁面「匯出全部知識包」，依磁碟實際檔案（`find_cached_transcript`／`find_cached_study_note`，不依賴 `queue_store`）打包所有 Transcript + Study Note 皆存在的影片；缺檔影片自動排除，不計入本次匯出
 - History 頁面新增「📦 匯出全部知識包」按鈕
+- `GET /api/queue` 回應新增 `transcript_exists`／`study_note_exists` 衍生欄位（比照 `GET /api/history`）
+
+### Changed
+- Queue 頁面「📦 下載知識包」按鈕改依磁碟實際檔案顯示，不再只信任 `queue_store` 的 path 欄位
+- `GET /api/queue/export-all` 候選判斷改用磁碟實際檔案，缺檔項目自動排除、不再讓整批匯出中止（語意比照 `/api/history/export-all`）
