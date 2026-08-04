@@ -186,7 +186,7 @@ Queue 頁面的匯出行為改為磁碟驗證，比照 History（Task 4）：`GE
 
 ---
 
-## Sprint 6 — Bug Fixes
+## Sprint 6 — Bug Fixes & Extension Enhancements
 
 ### Task 1 — Bug Fix: Windows ZIP Path Too Long
 
@@ -202,9 +202,25 @@ Queue 頁面的匯出行為改為磁碟驗證，比照 History（Task 4）：`GE
 
 **過程記錄：** 此 Bug 於 Sprint 5 Task 5 Human Test 過程中發現並完成 RCA，記錄於 TODO.md Product Backlog。Sprint 6 Task 1 依 RCA 建議方向（僅調整 ZIP 內部資料夾命名策略）修正，只修改 `app/knowledge_package.py` 一個檔案，未觸碰 Queue、History、Workflow、Export API、UI、下載流程。Assistant 用正式程式碼與資料庫內最長標題影片自行驗證：Explorer 解壓完整路徑從 235／244 降到 153／162（Downloads／OneDrive 同步 Downloads），並以 `Expand-Archive` 實際解壓縮成功、內容非空後，才交付人工驗收，一次通過。
 
+### Task 2 — Chrome Extension 支援 YouTube Shorts
+
+新增 YouTube Shorts（`/shorts/*`）支援：Shorts 頁面顯示 YB Learn 按鈕，點擊行為與一般影片一致（自動加入 Queue，不需手動貼網址）。
+
+- [x] 直接開啟 `https://www.youtube.com/shorts/...`，首次載入即出現 YB Learn 按鈕
+- [x] 點擊後：Workspace 分頁開啟／聚焦、網址正確帶入、自動加入 Queue、自動跑完 Transcript→Study Note，與一般影片相同
+- [x] Shorts 摘要流上下滑動切換，按鈕持續正確顯示
+- [x] 連續切換首頁 → Watch → Shorts → 搜尋 → Shorts，按鈕不重複注入，任何頁面僅一個按鈕
+- [x] 一般 `/watch` 影片頁迴歸測試：按鈕顯示、點擊、加入 Queue、Transcript→Study Note 全流程正常
+- [x] Console 無 JavaScript 錯誤
+
+**Test Date:** 2026-08-04
+**Test Result:** PASS
+
+**過程記錄：** 檢查 `app/youtube.py` 的 `extract_video_id()` 後發現正規表示式早已包含 `shorts/` 路徑分支，後端本來就能正確解析 Shorts 網址；問題完全出在 `extension/content.js` 的按鈕顯示邏輯只認 `/watch`。修正只新增 `isShortsPage()`／`isSupportedVideoPage()` 判斷，`manifest.json`（`content_scripts.matches` 本來就是 `*://www.youtube.com/*`，已涵蓋 `/shorts/*`）與 `extension/background.js` 皆未修改，`app/` 底下所有檔案也未觸碰，人工驗收一次通過。
+
 ### Sprint Result
 
-- [ ] Sprint 6 completed（Task 1 完成，待後續 Task 指示）
+- [ ] Sprint 6 completed（Task 1、Task 2 完成，待後續 Task 指示）
 
 ---
 

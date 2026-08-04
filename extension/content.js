@@ -7,6 +7,14 @@
     return location.pathname === '/watch';
   }
 
+  function isShortsPage() {
+    return location.pathname.startsWith('/shorts/');
+  }
+
+  function isSupportedVideoPage() {
+    return isWatchPage() || isShortsPage();
+  }
+
   async function onButtonClick() {
     const url = location.href;
     console.log('[YB Learn] Captured URL:', url);
@@ -91,7 +99,7 @@
   // the button has to be shown/hidden on YouTube's own SPA navigation event
   // instead of only once at content-script load time.
   function syncButtonVisibility() {
-    if (isWatchPage()) {
+    if (isSupportedVideoPage()) {
       createButton();
     } else {
       removeButton();

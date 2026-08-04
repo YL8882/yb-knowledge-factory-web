@@ -58,6 +58,7 @@ purpose: Track added, changed, fixed, and removed functionality per release.
 - `GET /api/history/export-all`：History 頁面「匯出全部知識包」，依磁碟實際檔案（`find_cached_transcript`／`find_cached_study_note`，不依賴 `queue_store`）打包所有 Transcript + Study Note 皆存在的影片；缺檔影片自動排除，不計入本次匯出
 - History 頁面新增「📦 匯出全部知識包」按鈕
 - `GET /api/queue` 回應新增 `transcript_exists`／`study_note_exists` 衍生欄位（比照 `GET /api/history`）
+- Chrome Extension 新增 YouTube Shorts（`/shorts/*`）支援：YB Learn 按鈕在 Shorts 頁面正確顯示，點擊行為與一般影片一致（自動加入 Queue，不需手動貼網址）
 
 ### Changed
 - Queue 頁面「📦 下載知識包」按鈕改依磁碟實際檔案顯示，不再只信任 `queue_store` 的 path 欄位

@@ -121,7 +121,7 @@ History 頁面重新定位為 **Knowledge Library**：不再只是瀏覽紀錄�
 
 ---
 
-## Sprint 6 — Bug Fixes
+## Sprint 6 — Bug Fixes & Extension Enhancements
 
 ### Task 1 — Bug Fix: Windows ZIP Path Too Long ✅ Completed
 
@@ -133,6 +133,17 @@ History 頁面重新定位為 **Knowledge Library**：不再只是瀏覽紀錄�
 僅修改 `app/knowledge_package.py`，未修改 Queue、History、Workflow、Export API、UI、下載流程。
 
 **過程記錄：** Sprint 5 Task 5 Human Test 過程中發現的獨立 Bug，RCA 記錄曾留在 Product Backlog；Sprint 6 Task 1 依 RCA 建議方向（調整 ZIP 內部資料夾命名策略）修正並驗收通過，Backlog 項目移除。
+
+### Task 2 — Chrome Extension 支援 YouTube Shorts ✅ Completed
+
+- [x] Shorts 頁面（`/shorts/*`）正確顯示 YB Learn 按鈕，直接開啟 Shorts 網址也能首次載入就出現
+- [x] 點擊後行為與一般影片完全一致：送出至 `/api/capture`、開啟／聚焦 Workspace、自動加入 Queue、自動跑完 Transcript→Study Note
+- [x] 首頁 → Watch → Shorts → 搜尋 → Shorts 連續切換，按鈕不重複注入，任何頁面僅一個按鈕
+- [x] 一般 `/watch` 影片頁行為不受影響
+
+僅修改 `extension/content.js`（新增 `isShortsPage()`／`isSupportedVideoPage()`，`syncButtonVisibility()` 改用合併後的判斷）。`manifest.json` 的 `content_scripts.matches`（`*://www.youtube.com/*`）本來就涵蓋 `/shorts/*`，不需修改；`extension/background.js`（Single Workspace 邏輯）與所有 `app/` 底下的檔案完全未觸碰。
+
+**關鍵發現：** `app/youtube.py` 的 `extract_video_id()` 正規表示式早就包含 `shorts/` 路徑分支，代表後端本來就能正確解析 Shorts 網址——問題完全出在 Extension 端的按鈕顯示邏輯只認 `/watch`，因此本次修正不需要動到 Web App／Queue／History／FastAPI／Export 任何一行程式碼。
 
 ---
 
@@ -176,6 +187,5 @@ Future versions only.
 - [ ] iOS App
 - [ ] Known Intermittent Issue 觀察追蹤（Study Note 偶發卡住／下載階段失敗，目前無法穩定重現；若再次出現需以完整 Log 重新開啟 RCA）
 - [ ] `error_messages.classify_error()` stage 判斷精確度改善（避免下載階段錯誤誤標為 Gemini 額度問題）
-- [ ] **Feature：Chrome Extension 支援 YouTube Shorts**（Priority：High，2026-08-04 提出，待設計方案）
 
   **需求：** 目前 Extension 僅支援 `https://www.youtube.com/watch?v=`，未支援 `https://www.youtube.com/shorts/`。Shorts 頁面需顯示 YB Learn 按鈕，點擊直接加入 Queue，不需手動貼網址，體驗與一般影片一致。
