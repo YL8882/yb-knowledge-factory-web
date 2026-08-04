@@ -62,3 +62,6 @@ purpose: Track added, changed, fixed, and removed functionality per release.
 ### Changed
 - Queue 頁面「📦 下載知識包」按鈕改依磁碟實際檔案顯示，不再只信任 `queue_store` 的 path 欄位
 - `GET /api/queue/export-all` 候選判斷改用磁碟實際檔案，缺檔項目自動排除、不再讓整批匯出中止（語意比照 `/api/history/export-all`）
+
+### Fixed
+- Knowledge Package ZIP（單支與批次匯出）標題過長時，Windows Explorer 內建解壓縮可能因路徑超過 MAX_PATH（260 字元）而失敗；`knowledge_package._sanitize_filename()` 新增 50 字長度截斷（`video_id` 一律截斷後才接上，確保唯一性不受影響）

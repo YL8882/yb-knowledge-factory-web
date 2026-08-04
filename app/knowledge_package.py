@@ -14,6 +14,14 @@ _DISALLOWED_FILENAME_CHARS = re.compile(
     r'[^一-鿿㐀-䶿A-Za-z0-9 \-_()\[\]]'
 )
 
+# Windows Explorer's built-in "Extract All" enforces the legacy MAX_PATH=260
+# limit. Video titles are long-form YouTube titles (up to ~100 chars) and
+# feed both the zip's own filename and its internal folder name, so an
+# untruncated title can push the extracted path past 260 once Explorer's
+# extra zip-name wrapper folder and the user's destination path are added.
+# See TODO.md Product Backlog RCA for the measured path lengths.
+_MAX_TITLE_LENGTH = 50
+
 
 class IncompletePackageError(Exception):
     """Raised by build_bulk_package() when any candidate item is missing its
@@ -24,7 +32,8 @@ class IncompletePackageError(Exception):
 
 
 def _sanitize_filename(name: str) -> str:
-    return _DISALLOWED_FILENAME_CHARS.sub("", name).strip()
+    cleaned = _DISALLOWED_FILENAME_CHARS.sub("", name).strip()
+    return cleaned[:_MAX_TITLE_LENGTH].strip()
 
 
 def _write_video_folder(zf: zipfile.ZipFile, folder_name: str, transcript_path: str, study_note_path: str) -> None:

@@ -121,6 +121,21 @@ History 頁面重新定位為 **Knowledge Library**：不再只是瀏覽紀錄�
 
 ---
 
+## Sprint 6 — Bug Fixes
+
+### Task 1 — Bug Fix: Windows ZIP Path Too Long ✅ Completed
+
+- [x] `knowledge_package._sanitize_filename()` 新增 `_MAX_TITLE_LENGTH = 50` 長度截斷，套用於單支與批次匯出共用的命名邏輯（`build_package()`／`build_bulk_package()` 皆呼叫同一函式，不需分別修改）
+- [x] `video_id` 一律在截斷後才接上，確保資料夾／檔名仍然唯一
+- [x] 最長標題影片（`video_id=U5YuWsheuIc`，清理後 91 字）驗證：Explorer 解壓完整路徑從 235／244 降到 153／162（Downloads／OneDrive 同步 Downloads），距離 MAX_PATH=260 有約 100 字餘裕
+- [x] 短標題不受影響，命名邏輯與修正前一致
+
+僅修改 `app/knowledge_package.py`，未修改 Queue、History、Workflow、Export API、UI、下載流程。
+
+**過程記錄：** Sprint 5 Task 5 Human Test 過程中發現的獨立 Bug，RCA 記錄曾留在 Product Backlog；Sprint 6 Task 1 依 RCA 建議方向（調整 ZIP 內部資料夾命名策略）修正並驗收通過，Backlog 項目移除。
+
+---
+
 ## Acceptance
 
 - [ ] Complete end-to-end workflow
@@ -161,3 +176,6 @@ Future versions only.
 - [ ] iOS App
 - [ ] Known Intermittent Issue 觀察追蹤（Study Note 偶發卡住／下載階段失敗，目前無法穩定重現；若再次出現需以完整 Log 重新開啟 RCA）
 - [ ] `error_messages.classify_error()` stage 判斷精確度改善（避免下載階段錯誤誤標為 Gemini 額度問題）
+- [ ] **Feature：Chrome Extension 支援 YouTube Shorts**（Priority：High，2026-08-04 提出，待設計方案）
+
+  **需求：** 目前 Extension 僅支援 `https://www.youtube.com/watch?v=`，未支援 `https://www.youtube.com/shorts/`。Shorts 頁面需顯示 YB Learn 按鈕，點擊直接加入 Queue，不需手動貼網址，體驗與一般影片一致。

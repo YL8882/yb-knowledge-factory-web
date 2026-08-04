@@ -182,7 +182,29 @@ Queue 頁面的匯出行為改為磁碟驗證，比照 History（Task 4）：`GE
 
 ### Sprint Result
 
-- [ ] Sprint 5 completed（Task 1、Task 2、Task 3、Task 4、Task 5 完成，待後續 Task 指示）
+- [x] Sprint 5 completed（Task 1、Task 2、Task 3、Task 4、Task 5 全部完成並驗收通過）
+
+---
+
+## Sprint 6 — Bug Fixes
+
+### Task 1 — Bug Fix: Windows ZIP Path Too Long
+
+修正 Knowledge Package ZIP（單支與批次匯出）標題過長時，Windows Explorer 內建解壓縮因路徑超過 MAX_PATH（260 字元）而失敗的問題。`knowledge_package._sanitize_filename()` 新增 50 字長度截斷，`video_id` 一律在截斷後才接上以確保唯一性。
+
+- [x] 最長標題影片（`video_id=U5YuWsheuIc`）：ZIP 成功下載、Windows Explorer 正常解壓縮、資料夾名稱已縮短但保留部分標題與 `video_id`、`Transcript.md`／`Study_Note.md` 正常
+- [x] 批次匯出：ZIP 正常下載、所有影片資料夾正常、解壓縮正常
+- [x] 一般短標題影片：命名正常、不會過度裁切
+- [x] Queue／History：畫面正常、單支下載正常、批次下載正常、Export API 正常
+
+**Test Date:** 2026-08-04
+**Test Result:** PASS
+
+**過程記錄：** 此 Bug 於 Sprint 5 Task 5 Human Test 過程中發現並完成 RCA，記錄於 TODO.md Product Backlog。Sprint 6 Task 1 依 RCA 建議方向（僅調整 ZIP 內部資料夾命名策略）修正，只修改 `app/knowledge_package.py` 一個檔案，未觸碰 Queue、History、Workflow、Export API、UI、下載流程。Assistant 用正式程式碼與資料庫內最長標題影片自行驗證：Explorer 解壓完整路徑從 235／244 降到 153／162（Downloads／OneDrive 同步 Downloads），並以 `Expand-Archive` 實際解壓縮成功、內容非空後，才交付人工驗收，一次通過。
+
+### Sprint Result
+
+- [ ] Sprint 6 completed（Task 1 完成，待後續 Task 指示）
 
 ---
 
