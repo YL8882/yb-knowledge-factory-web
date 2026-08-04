@@ -15,6 +15,7 @@ from starlette.background import BackgroundTask
 import error_messages
 import gemini_client
 import history_store
+import knowledge_outline
 import knowledge_package
 import queue_store
 import study_note
@@ -737,6 +738,67 @@ def generate_study_note(video_id: str):
         if detail == "Transcript 檔案不存在":
             raise HTTPException(status_code=404, detail=detail)
         raise HTTPException(status_code=500, detail=error_messages.classify_error(detail, stage="studynote"))
+
+
+@app.post("/api/queue/{video_id}/knowledge-outline")
+async def generate_knowledge_outline(video_id: str):
+    """Rapid Learning Engine (Sprint 7, Task 1): manual "🧠 開始快速學習"
+    trigger for One Sentence + Knowledge Outline. Deliberately NOT routed
+    through _pipeline_queue / the single worker thread (unlike /transcript
+    and /study-note) — this doesn't touch `status` or participate in Stage
+    Guard's state machine at all, it's an independent additive artifact, so
+    it follows the same direct-async-handler pattern the Export/History
+    endpoints already use instead. Reads the existing cached Transcript only
+    — does not touch the Transcript / Study Note pipeline.
+    """
+    try:
+        item = queue_store.get_item(video_id)
+    except queue_store.QueueItemNotFoundError:
+        raise HTTPException(status_code=404, detail="項目不存在")
+
+    # Processing cache: avoids a duplicate Gemini call (and duplicate token
+    # spend) if this has already been generated for this video_id — same
+    # find_cached_* pattern Transcript/Study Note already use.
+    cached_path = knowledge_outline.find_cached_knowledge_outline(video_id)
+    if cached_path:
+        return {
+            "video_id": video_id,
+            "knowledge_outline": cached_path.read_text(encoding="utf-8"),
+            "file_path": str(cached_path),
+        }
+
+    transcript_path = item.get("transcript_path")
+    if not transcript_path or not Path(transcript_path).exists():
+        raise HTTPException(status_code=400, detail="請先產生 Transcript")
+
+    transcript_content = Path(transcript_path).read_text(encoding="utf-8")
+    transcript_body = study_note.extract_transcript_body(transcript_content)
+
+    try:
+        body = gemini_client.generate_knowledge_outline(
+            title=item["title"], url=item["url"], transcript_text=transcript_body
+        )
+    except gemini_client.GeminiConfigError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    except gemini_client.GeminiGenerationError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=error_messages.classify_error(str(exc), stage="studynote"),
+        )
+
+    output_path = knowledge_outline.save_knowledge_outline(
+        video_id=video_id, title=item["title"], body=body
+    )
+
+    # Additive field only — no `status` change, so this never interacts with
+    # _stage_rank() / Stage Guard's forward-only state machine.
+    queue_store.update_item(video_id, knowledge_outline_path=str(output_path))
+
+    return {
+        "video_id": video_id,
+        "knowledge_outline": body,
+        "file_path": str(output_path),
+    }
 
 
 @app.get("/api/queue/{video_id}/transcript/download")

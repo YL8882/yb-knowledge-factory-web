@@ -147,6 +147,37 @@ History 頁面重新定位為 **Knowledge Library**：不再只是瀏覽紀錄�
 
 ---
 
+## Sprint 7 — Rapid Learning Engine
+
+Learn Package Specification v2.0（見 `Learn_Package_Specification_v2.0.md`）第一階段實作：One Sentence + Knowledge Outline，以及讓使用者 30 秒內建立知識輪廓的呈現方式。
+
+### Task 0 — Learning Blueprint Engine：Learn Package Specification v2.0 ✅ Completed
+
+- [x] 定義 Learn Package 6 個模組（One Sentence／Knowledge Outline／Learning Blueprint／Study Note／Teach Back／Action List）的結構、驗收標準、閱讀動線
+- [x] 純規格文件，未涉及程式、UI、Prompt
+
+文件：`Learn_Package_Specification_v2.0.md`
+
+### Task 1 — One Sentence + Knowledge Outline ✅ Completed
+
+- [x] Queue Card 新增「🧠 開始快速學習」按鈕，Study Note 完成後才顯示（Queue 維持收件匣定位，Rapid Learning 是使用者主動開始學習的動作，不隨 Queue 自動產生）
+- [x] 點擊後呼叫 Gemini 產生 One Sentence（影片核心目的，非摘要）＋ Knowledge Outline（知識輪廓），存成新檔案 `outputs/knowledge_outlines/KO_<title>_<video_id>.md`
+- [x] 已產生過的項目重新整理頁面直接顯示，不重複呼叫 Gemini
+
+新增 `app/knowledge_outline.py`（比照 `study_note.py`）、`app/gemini_client.py` 新增 Prompt 與 `generate_knowledge_outline()`、`app/main.py` 新增獨立的 `POST /api/queue/{video_id}/knowledge-outline`（未掛進 Single Worker／Stage Guard，只新增 `knowledge_outline_path` 附加欄位）。未修改 Transcript／Study Note 產生邏輯、Workflow、Stage Guard、Single Worker、`queue_store.py` 寫入結構、History、Export、Chrome Extension。
+
+**過程記錄：** 初版 UI 把顯示區塊放在頁面上方共用的 `processing-panel`（跟 Study Note 預覽同一位置），Human Test 發現「畫面沒有變化」——RCA 確認不是程式錯誤，是 UI 版位問題：該面板只對應 `trackedVideoId`（最近一次追蹤的單一影片），不是每張 Queue Card 各自一份。改為在 `renderQueue()` 內、每張 Queue Card 直接渲染 Rapid Learning 區塊（新增 `knowledgeOutlineCache` 讓內容跨重新渲染存活），重新驗收通過。
+
+### Task 2 — Quick Learn Layer（30 秒學習層）✅ Completed
+
+- [x] Queue Card 上的 Rapid Learning 區塊重新設計：預設只顯示 One Sentence ＋ 精簡重點（①～⑤，從既有 Knowledge Outline 文字擷取，非重新產生），第一眼不超過一個螢幕
+- [x] 完整 Knowledge Outline 預設收合，「▶ 展開完整內容」／「▲ 收合」純前端切換，不呼叫 Gemini、不重新整理資料
+- [x] 展開狀態（`expandedKnowledgeOutlineCards`）跨重新渲染保留
+
+僅修改 `app/static/script.js`（新增 `extractTopPoints()`，重寫 `buildRapidLearningSection()`）、`app/static/style.css`。未修改 Prompt、Gemini、`knowledge_outline.py`、`study_note.py`、Queue Store、History、Export、Chrome Extension。
+
+---
+
 ## Acceptance
 
 - [ ] Complete end-to-end workflow

@@ -63,6 +63,34 @@ _QUICK_SUMMARY_SYSTEM_INSTRUCTION = """\
 只輸出這一句話，不要輸出標題、章節名稱、標點以外的其他格式。
 """
 
+_KNOWLEDGE_OUTLINE_SYSTEM_INSTRUCTION = """\
+你是 KnowledgeOutline AI，任務是幫助學習者在 30 秒內掌握一支 YouTube 影片的知識架構。
+
+# 規則
+
+- 使用台灣繁體中文，語氣正式、清楚。
+- 只根據逐字稿內容整理，不得杜撰、不得補充逐字稿未提及的資訊。
+- 忽略開場寒暄、訂閱提醒、廣告、與主題無關的閒聊。
+- One Sentence 不是摘要，是這支影片「最核心的目的」——影片存在的原因、\
+想達成的效果，不是內容重點列表。
+- Knowledge Outline 不是目錄，是知識輪廓——需清楚呈現影片分成幾個部分、\
+每部分的功能是什麼、彼此的關係是什麼。
+
+# 輸出格式
+
+請直接輸出以下 Markdown 結構，標題文字與順序不得更動、不得新增或刪除章節，\
+不得使用 HTML、XML、JSON 或 YAML：
+
+# One Sentence
+
+（一句話，40～60 字內，回答「這支影片的核心目的是什麼」，僅一行）
+
+# Knowledge Outline
+
+（階層式清單，一級節點 3～7 個，每個節點包含：標籤 ＋ 這部分的功能／\
+與其他部分的關係，簡短說明）
+"""
+
 _client: genai.Client | None = None
 
 
@@ -101,6 +129,35 @@ def generate_study_note(title: str, url: str, transcript_text: str) -> str:
             contents=prompt,
             config=types.GenerateContentConfig(
                 system_instruction=_STUDY_NOTE_SYSTEM_INSTRUCTION,
+            ),
+        )
+    except Exception as exc:
+        raise GeminiGenerationError(str(exc)) from exc
+
+    text = getattr(response, "text", None)
+    if not text:
+        raise GeminiGenerationError("Gemini 未回傳有效內容")
+
+    return text.strip()
+
+
+def generate_knowledge_outline(title: str, url: str, transcript_text: str) -> str:
+    client = _get_client()
+
+    prompt = (
+        f"影片標題：{title}\n"
+        f"影片網址：{url}\n\n"
+        "Transcript：\n"
+        f"{transcript_text}\n\n"
+        "請根據以上 Transcript 產生 One Sentence 與 Knowledge Outline。"
+    )
+
+    try:
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=_KNOWLEDGE_OUTLINE_SYSTEM_INSTRUCTION,
             ),
         )
     except Exception as exc:

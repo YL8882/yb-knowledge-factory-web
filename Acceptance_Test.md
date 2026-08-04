@@ -220,7 +220,58 @@ Queue 頁面的匯出行為改為磁碟驗證，比照 History（Task 4）：`GE
 
 ### Sprint Result
 
-- [ ] Sprint 6 completed（Task 1、Task 2 完成，待後續 Task 指示）
+- [x] Sprint 6 completed（Task 1、Task 2 全部完成並驗收通過）
+
+---
+
+## Sprint 7 — Rapid Learning Engine
+
+### Task 0 — Learning Blueprint Engine：Learn Package Specification v2.0
+
+規格文件，定義 Learn Package 6 個模組（One Sentence／Knowledge Outline／Learning Blueprint／Study Note／Teach Back／Action List）的結構、驗收標準與閱讀動線。未涉及程式、UI、Prompt。
+
+- [x] 文件內容涵蓋 6 個模組定義、閱讀動線、與現有系統的關係、待確認開放問題
+- [x] 使用者審閱結構後確認，作為 Task 1 起的設計依據
+
+**Test Date:** 2026-08-04
+**Test Result:** PASS（文件審閱確認，非程式驗收）
+
+### Task 1 — One Sentence + Knowledge Outline
+
+Queue Card 新增「🧠 開始快速學習」按鈕，Study Note 完成後才顯示；點擊後產生 One Sentence（影片核心目的）＋ Knowledge Outline（知識輪廓）。
+
+- [x] 一支影片跑完 Study Note 後，Queue Card 顯示「🧠 開始快速學習」按鈕，Queue 完成不會自動觸發
+- [x] 點擊後在同一張 Queue Card 展開 One Sentence + Knowledge Outline
+- [x] 內容檢查：One Sentence 讀起來像「目的」而非摘要；Knowledge Outline 有段落與功能／關係說明
+- [x] 重新整理頁面，已產生的項目直接顯示，不重複呼叫 Gemini
+- [x] 多張卡片各自獨立，互不影響
+- [x] 迴歸：Transcript、Study Note、Queue、History、Export 不受影響
+
+**Test Date:** 2026-08-04
+**Test Result:** PASS
+
+**過程記錄：** 初版 Human Test 回報「Server 200 OK 但畫面沒有變化」，經過兩輪 RCA（先排除 API／JS Exception／DOM 選取錯誤，再加入除錯 Log 定位）確認：不是程式錯誤，是 UI 版位問題——內容原本更新到頁面上方共用的 `processing-panel`，只對應 `trackedVideoId`（最近一次追蹤的單一影片），不是每張 Queue Card 各自一份。改為在 `renderQueue()` 內每張 Queue Card 直接渲染，並移除 RCA 過程加入的所有除錯 Log，重新驗收通過。
+
+### Task 2 — Quick Learn Layer（30 秒學習層）
+
+Rapid Learning 區塊重新設計：預設只顯示 One Sentence ＋ 精簡重點（①～⑤），完整 Knowledge Outline 預設收合，可展開／收合。
+
+- [x] 第一眼看到「30 秒快速理解」區塊（One Sentence + 核心重點），完整 Knowledge Outline 預設收合
+- [x] 點擊「▶ 展開完整內容」，完整 Knowledge Outline 正確顯示，按鈕變成「▲ 收合」
+- [x] 再次點擊可收合，按鈕變回「▶ 展開完整內容」
+- [x] Network 面板確認展開／收合過程沒有任何新的 API 請求
+- [x] One Sentence 與核心重點全程保持可見，只有完整 Knowledge Outline 可展開／收合
+- [x] 多張卡片各自獨立測試，互不影響
+- [x] 迴歸：Transcript、Study Note、Queue、History、Export 不受影響
+
+**Test Date:** 2026-08-04
+**Test Result:** PASS
+
+**過程記錄：** 人工驗收一次通過。精簡重點是純前端從既有 Knowledge Outline 文字擷取一級清單項目（`extractTopPoints()`），非重新呼叫 Gemini；展開／收合為純 CSS class 切換，不觸發任何 API 請求。
+
+### Sprint Result
+
+- [ ] Sprint 7 completed（Task 0、Task 1、Task 2 完成，待後續 Task 指示）
 
 ---
 

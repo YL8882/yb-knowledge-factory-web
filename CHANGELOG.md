@@ -59,6 +59,9 @@ purpose: Track added, changed, fixed, and removed functionality per release.
 - History 頁面新增「📦 匯出全部知識包」按鈕
 - `GET /api/queue` 回應新增 `transcript_exists`／`study_note_exists` 衍生欄位（比照 `GET /api/history`）
 - Chrome Extension 新增 YouTube Shorts（`/shorts/*`）支援：YB Learn 按鈕在 Shorts 頁面正確顯示，點擊行為與一般影片一致（自動加入 Queue，不需手動貼網址）
+- `POST /api/queue/{video_id}/knowledge-outline`：Rapid Learning Engine，手動觸發產生 One Sentence（影片核心目的）＋ Knowledge Outline（知識輪廓），存成 `outputs/knowledge_outlines/KO_<title>_<video_id>.md`
+- Queue Card 新增「🧠 開始快速學習」按鈕（Study Note 完成後才顯示），點擊後在同一張卡片展開 Quick Learn Layer：One Sentence ＋ 精簡重點永遠可見，完整 Knowledge Outline 預設收合、可展開／收合（純前端切換，不重新呼叫 Gemini）
+- 新增 `Learn_Package_Specification_v2.0.md`：Sprint 7 Learn Package 6 模組（One Sentence／Knowledge Outline／Learning Blueprint／Study Note／Teach Back／Action List）規格文件
 
 ### Changed
 - Queue 頁面「📦 下載知識包」按鈕改依磁碟實際檔案顯示，不再只信任 `queue_store` 的 path 欄位

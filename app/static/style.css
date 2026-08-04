@@ -610,6 +610,102 @@ main {
     background: #eaf2fe;
 }
 
+/* Rapid Learning Engine (Sprint 7, Task 1) */
+.queue-item-rapid-learning {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    border: 1px solid #7c3aed;
+    background: none;
+    color: #7c3aed;
+    font-size: 0.85em;
+    font-family: inherit;
+    padding: 6px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.queue-item-rapid-learning:hover {
+    background: #f3ebfe;
+}
+
+.queue-item-rapid-learning:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.rapid-learning-section {
+    margin-top: 10px;
+    padding: 12px;
+    background: #faf7ff;
+    border: 1px solid #e6d9fb;
+    border-radius: 8px;
+}
+
+.rapid-learning-block + .rapid-learning-block {
+    margin-top: 12px;
+}
+
+.rapid-learning-divider {
+    color: #c4b5fd;
+    font-size: 0.7em;
+    letter-spacing: -1px;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.rapid-learning-heading {
+    font-weight: 600;
+    font-size: 0.9em;
+    color: #5b21b6;
+    margin: 2px 0;
+}
+
+.rapid-learning-content {
+    font-size: 0.88em;
+    color: #374151;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    margin: 4px 0 0;
+    font-family: inherit;
+}
+
+/* Quick Learn Layer (Sprint 7, Task 2) */
+.rapid-learning-points .rapid-learning-content {
+    margin: 6px 0 0;
+}
+
+.rapid-learning-toggle {
+    display: block;
+    width: 100%;
+    margin-top: 12px;
+    padding: 6px 0;
+    border: none;
+    background: none;
+    color: #7c3aed;
+    font-size: 0.85em;
+    font-weight: 600;
+    font-family: inherit;
+    text-align: center;
+    cursor: pointer;
+}
+
+.rapid-learning-toggle:hover {
+    text-decoration: underline;
+}
+
+.rapid-learning-full {
+    margin-top: 8px;
+    padding-top: 12px;
+    border-top: 1px solid #e6d9fb;
+}
+
+.rapid-learning-full.is-hidden {
+    display: none;
+}
+
 .queue-empty {
     color: #bdc3c7;
     text-align: center;

@@ -22,6 +22,26 @@ document.addEventListener('DOMContentLoaded', function() {
     // re-fetching the same file on every poll tick while other items are busy.
     let displayedStudyNoteVideoId = null;
 
+    // Rapid Learning Engine (Sprint 7, Task 1): One Sentence + Knowledge Outline
+    // text keyed by video_id, populated once fetched/generated. renderQueue()
+    // rebuilds every <li> from scratch on each poll tick, so a per-card DOM
+    // reference can't survive across renders — this cache is what lets a card
+    // render its expanded content synchronously instead of re-fetching (or
+    // losing) it on every re-render.
+    const knowledgeOutlineCache = new Map();
+
+    // Guards fetchKnowledgeOutlineIntoCache() so an item whose knowledge_outline_path
+    // is already set (generated in an earlier session, not yet in this session's
+    // cache) doesn't get re-fetched on every poll tick while the first fetch is
+    // still in flight.
+    const knowledgeOutlineFetchInFlight = new Set();
+
+    // Quick Learn Layer (Sprint 7, Task 2): video_ids whose full Knowledge
+    // Outline is currently expanded — a pure UI-state set (no fetch behind
+    // it), consulted on every renderQueue() rebuild so the toggle survives a
+    // re-render triggered by an unrelated action elsewhere in the list.
+    const expandedKnowledgeOutlineCards = new Set();
+
     // Remembered download folder (File System Access API, Chrome/Edge only). The handle
     // itself is persisted in IndexedDB so it survives a page reload; autoDownload() writes
     // straight into it once permission is confirmed, instead of prompting on every download.
@@ -628,6 +648,27 @@ document.addEventListener('DOMContentLoaded', function() {
                 li.appendChild(retryBtn);
             }
 
+            // Rapid Learning Engine (Sprint 7, Task 1): per-card, not a shared
+            // page-level panel — appears once Study Note is ready (Queue stays
+            // a pure inbox; this is where "learning" starts), expands in place
+            // on this same card, never navigates elsewhere on the page.
+            if (hasStudyNote) {
+                if (knowledgeOutlineCache.has(item.video_id)) {
+                    li.appendChild(buildRapidLearningSection(item.video_id, knowledgeOutlineCache.get(item.video_id)));
+                } else if (item.knowledge_outline_path) {
+                    fetchKnowledgeOutlineIntoCache(item.video_id);
+                } else {
+                    const rapidLearningBtn = document.createElement('button');
+                    rapidLearningBtn.className = 'queue-item-rapid-learning';
+                    rapidLearningBtn.type = 'button';
+                    rapidLearningBtn.innerHTML = '<span aria-hidden="true">🧠</span> 開始快速學習';
+                    rapidLearningBtn.addEventListener('click', function() {
+                        startRapidLearning(item.video_id, rapidLearningBtn);
+                    });
+                    li.appendChild(rapidLearningBtn);
+                }
+            }
+
             // Knowledge Package Export (Sprint 5, Task 1): manual, separate from the
             // auto-download of the individual Transcript.md / Study_Note.md files
             // below — zips both into one <Video Title>/ package on click. Gated on
@@ -700,6 +741,174 @@ document.addEventListener('DOMContentLoaded', function() {
                 : 'pending',
             prepare: (item.status === 'Transcript Ready' || item.status === 'Study Note Ready') ? 'done' : 'pending',
         };
+    }
+
+    // Rapid Learning Engine (Sprint 7, Task 1): splits the single Markdown blob
+    // the backend returns (# One Sentence + # Knowledge Outline headers) into
+    // the two sections, so each can be rendered as its own labeled block on
+    // the card instead of one undifferentiated text dump.
+    function parseKnowledgeOutline(rawText) {
+        const oneSentenceMatch = rawText.match(/#\s*One Sentence\s*\n+([\s\S]*?)(?=\n#\s*Knowledge Outline|$)/i);
+        const outlineMatch = rawText.match(/#\s*Knowledge Outline\s*\n+([\s\S]*)/i);
+        return {
+            oneSentence: oneSentenceMatch ? oneSentenceMatch[1].trim() : rawText.trim(),
+            knowledgeOutline: outlineMatch ? outlineMatch[1].trim() : '',
+        };
+    }
+
+    // Manual, opt-in trigger for One Sentence + Knowledge Outline — bound to
+    // one specific card's button. Deliberately NOT automatic on Queue
+    // completion (Queue is a pure inbox, "learning" only starts on click).
+    // Caches the result by video_id and re-renders the whole Queue list on
+    // success — cards are rebuilt from scratch on every render, so there's no
+    // stable per-card DOM node to patch directly once the fetch resolves.
+    async function startRapidLearning(videoId, button) {
+        button.disabled = true;
+        try {
+            const response = await fetch(
+                '/api/queue/' + encodeURIComponent(videoId) + '/knowledge-outline',
+                { method: 'POST' }
+            );
+            const data = await response.json();
+            if (!response.ok) {
+                showStatus(data.detail || '產生知識輪廓失敗', 'error');
+                button.disabled = false;
+                return;
+            }
+            knowledgeOutlineCache.set(videoId, data.knowledge_outline);
+            await loadQueue();
+        } catch (error) {
+            showStatus('網路連線失敗', 'error');
+            button.disabled = false;
+        }
+    }
+
+    // Revisiting an item whose Knowledge Outline was already generated in an
+    // earlier session (knowledge_outline_path set, but not yet in this
+    // session's client-side cache) — fetches it once (server-side cache hit
+    // via find_cached_knowledge_outline(), no Gemini call) and re-renders.
+    async function fetchKnowledgeOutlineIntoCache(videoId) {
+        if (knowledgeOutlineFetchInFlight.has(videoId)) {
+            return;
+        }
+        knowledgeOutlineFetchInFlight.add(videoId);
+        try {
+            const response = await fetch(
+                '/api/queue/' + encodeURIComponent(videoId) + '/knowledge-outline',
+                { method: 'POST' }
+            );
+            if (!response.ok) {
+                return;
+            }
+            const data = await response.json();
+            knowledgeOutlineCache.set(videoId, data.knowledge_outline);
+            await loadQueue();
+        } catch (error) {
+            // Silent — next poll tick (or manual refresh) retries naturally,
+            // same reasoning as the other cache-miss fetches in this file.
+        } finally {
+            knowledgeOutlineFetchInFlight.delete(videoId);
+        }
+    }
+
+    // Quick Learn Layer (Sprint 7, Task 2): pulls up to `maxCount` top-level
+    // list items out of the existing Knowledge Outline text — a pure UI-layer
+    // condensation of content Task 1 already generated, not a new Gemini call.
+    // Matches common top-level markers (1. / 1) / - / * / •) with little to no
+    // leading whitespace; deeper-indented sub-items are skipped so this stays
+    // a "5 points" summary, not the full nested outline.
+    function extractTopPoints(knowledgeOutlineText, maxCount) {
+        const lines = knowledgeOutlineText.split('\n');
+        const points = [];
+        for (const line of lines) {
+            const match = line.match(/^\s{0,3}(?:[0-9]+[.)]|[-*•])\s+(.+)/);
+            if (match) {
+                points.push(match[1].trim());
+                if (points.length >= maxCount) {
+                    break;
+                }
+            }
+        }
+        return points;
+    }
+
+    // Renders the Quick Learn Layer directly on a Queue Card: One Sentence +
+    // condensed points are always visible (fits in one screen — the product
+    // goal is "30 seconds to a knowledge outline" before deciding to read
+    // more); the full Knowledge Outline is collapsed by default behind a
+    // toggle that only flips a CSS class, no Gemini call, no re-fetch.
+    function buildRapidLearningSection(videoId, rawText) {
+        const parsed = parseKnowledgeOutline(rawText);
+        const points = extractTopPoints(parsed.knowledgeOutline, 5);
+
+        const section = document.createElement('div');
+        section.className = 'rapid-learning-section';
+
+        const quickBlock = document.createElement('div');
+        quickBlock.className = 'rapid-learning-block';
+        quickBlock.innerHTML =
+            '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>' +
+            '<div class="rapid-learning-heading">🎯 30 秒快速理解</div>' +
+            '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>';
+
+        const oneSentenceText = document.createElement('p');
+        oneSentenceText.className = 'rapid-learning-content';
+        oneSentenceText.textContent = parsed.oneSentence;
+        quickBlock.appendChild(oneSentenceText);
+
+        const pointsHeading = document.createElement('div');
+        pointsHeading.className = 'rapid-learning-heading';
+        pointsHeading.textContent = '🧠 ' + points.length + ' 個重點';
+        quickBlock.appendChild(pointsHeading);
+
+        const CIRCLED_DIGITS = ['①', '②', '③', '④', '⑤'];
+        const pointsList = document.createElement('div');
+        pointsList.className = 'rapid-learning-points';
+        points.forEach(function(point, index) {
+            const pointEl = document.createElement('p');
+            pointEl.className = 'rapid-learning-content';
+            pointEl.textContent = (CIRCLED_DIGITS[index] || (index + 1) + '.') + ' ' + point;
+            pointsList.appendChild(pointEl);
+        });
+        quickBlock.appendChild(pointsList);
+
+        section.appendChild(quickBlock);
+
+        const isExpanded = expandedKnowledgeOutlineCards.has(videoId);
+
+        const toggleBtn = document.createElement('button');
+        toggleBtn.className = 'rapid-learning-toggle';
+        toggleBtn.type = 'button';
+        toggleBtn.textContent = isExpanded ? '▲ 收合' : '▶ 展開完整內容';
+        section.appendChild(toggleBtn);
+
+        const outlineBlock = document.createElement('div');
+        outlineBlock.className = 'rapid-learning-block rapid-learning-full' + (isExpanded ? '' : ' is-hidden');
+        outlineBlock.innerHTML =
+            '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>' +
+            '<div class="rapid-learning-heading">🗺️ Knowledge Outline</div>' +
+            '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>';
+        const outlineText = document.createElement('pre');
+        outlineText.className = 'rapid-learning-content';
+        outlineText.textContent = parsed.knowledgeOutline;
+        outlineBlock.appendChild(outlineText);
+        section.appendChild(outlineBlock);
+
+        // Pure UI toggle — no fetch, no re-render, just a class flip — so
+        // expand/collapse never re-calls Gemini. State is also mirrored into
+        // expandedKnowledgeOutlineCards so it survives a full renderQueue()
+        // rebuild triggered by an unrelated action (e.g. deleting another item).
+        toggleBtn.addEventListener('click', function() {
+            const nowExpanded = outlineBlock.classList.toggle('is-hidden') === false;
+            toggleBtn.textContent = nowExpanded ? '▲ 收合' : '▶ 展開完整內容';
+            if (nowExpanded) {
+                expandedKnowledgeOutlineCards.add(videoId);
+            } else {
+                expandedKnowledgeOutlineCards.delete(videoId);
+            }
+        });
+
+        return section;
     }
 
     // Fetches and shows the Study Note body inline once it's ready, and points the
