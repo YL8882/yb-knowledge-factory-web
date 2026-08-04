@@ -51,3 +51,9 @@ purpose: Track added, changed, fixed, and removed functionality per release.
 - Study Note 預覽讀取失敗後不會重試，永久無法顯示
 - Chrome Extension 開啟 Workspace 時偶發「message port closed before a response was received」
 - 批次匯出知識包（`export-all`）時，資料夾名稱若含 Emoji（BMP 之外字元）會導致 Windows 內建解壓縮工具判定整個 zip 無效；`knowledge_package._sanitize_filename()` 改為白名單邏輯，僅保留中文/英文/數字/空白/`-`/`_`/`()`/`[]`
+
+## 2026-08-04
+
+### Added
+- `GET /api/history/export-all`：History 頁面「匯出全部知識包」，依磁碟實際檔案（`find_cached_transcript`／`find_cached_study_note`，不依賴 `queue_store`）打包所有 Transcript + Study Note 皆存在的影片；缺檔影片自動排除，不計入本次匯出
+- History 頁面新增「📦 匯出全部知識包」按鈕

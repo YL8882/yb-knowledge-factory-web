@@ -1,8 +1,67 @@
 document.addEventListener('DOMContentLoaded', function() {
     const historyList = document.getElementById('history-list');
     const historyEmpty = document.getElementById('history-empty');
+    const historyStatus = document.getElementById('history-status');
+    const exportAllBtn = document.getElementById('export-all-history-btn');
 
     loadHistory();
+
+    if (exportAllBtn) {
+        exportAllBtn.addEventListener('click', exportAllHistoryPackages);
+    }
+
+    function showStatus(message, type) {
+        const icon = type === 'success' ? '✓' : type === 'error' ? '⚠' : 'ⓘ';
+        historyStatus.innerHTML =
+            '<span class="status-icon" aria-hidden="true">' + icon + '</span>' +
+            '<span>' + message + '</span>';
+        historyStatus.className = 'status-box ' + type;
+    }
+
+    function parseFilename(disposition) {
+        if (!disposition) {
+            return null;
+        }
+
+        const extended = disposition.match(/filename\*=[^']*''([^;]+)/i);
+        if (extended) {
+            try {
+                return decodeURIComponent(extended[1]);
+            } catch (error) {
+                // fall through to the plain form below
+            }
+        }
+
+        const plain = disposition.match(/filename="?([^";]+)"?/i);
+        return plain ? plain[1].trim() : null;
+    }
+
+    // History Bulk Export (Sprint 5, Task 4): mirrors script.js's
+    // exportAllPackages(), but hits /api/history/export-all — disk-verified
+    // via history_store + find_cached_*, independent of queue_store.
+    async function exportAllHistoryPackages() {
+        try {
+            const response = await fetch('/api/history/export-all');
+            if (!response.ok) {
+                const data = await response.json().catch(function() { return {}; });
+                showStatus(data.detail || '匯出知識包失敗', 'error');
+                return;
+            }
+
+            const filename = parseFilename(response.headers.get('Content-Disposition')) || 'YB_Knowledge_Packages.zip';
+            const blob = await response.blob();
+            const objectUrl = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = objectUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(objectUrl);
+        } catch (error) {
+            showStatus('網路連線失敗', 'error');
+        }
+    }
 
     async function loadHistory() {
         try {

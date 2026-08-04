@@ -152,9 +152,23 @@ History 頁面重新定位為 Knowledge Library：每支影片一張卡片，展
 
 **過程記錄：** 人工驗收過程中兩度懷疑程式邏輯有誤（正常情境畫面缺少狀態列與按鈕；缺檔情境下載按鈕未隱藏、Transcript 開啟按鈕誤消失）。逐一比對 server 實際回應與硬碟原始檔案（`diff` 結果完全一致）、直接呼叫 `GET /api/history` 確認資料正確，確認程式碼本身無誤；兩次現象皆為瀏覽器快取舊版 `history.js`／`history.html`／`style.css` 造成，強制重新整理（Ctrl+Shift+R）後正常情境與缺檔情境共 12 項檢查全數通過。測試用暫時移除的 `Study_Note.md` 已還原。過程中另發現一個獨立既有缺口：Queue 頁面的下載按鈕只檢查 `queue_store` 的 path 欄位、未驗證檔案是否還在磁碟上，已記錄於 Product Backlog，非本次範圍。
 
+### Task 4 — History Bulk Export
+
+History 頁面新增「📦 匯出全部知識包」按鈕，依磁碟實際檔案打包所有已完整的影片（Transcript + Study Note 皆存在），缺檔影片自動排除，不計入本次匯出。
+
+- [x] 正常情境：History 頁面顯示按鈕，點擊後下載 zip，內容為所有完整影片各自資料夾（`<Video Title>_<video_id>/Transcript.md`、`Study_Note.md`）
+- [x] 部分缺檔情境：缺 Study Note 的影片自動排除、不出現在 zip 中，其餘完整影片正常匯出，不顯示錯誤訊息
+- [x] 全部缺檔情境（無任何完整項目）：不下載空 ZIP，畫面顯示明確錯誤訊息「目前沒有已完成的知識包可匯出」
+- [x] 單張卡片狀態不受影響：Transcript／YouTube 連結維持顯示，Study Note 缺失時對應「開啟」按鈕與匯出資格正確反映
+
+**Test Date:** 2026-08-04
+**Test Result:** PASS
+
+**過程記錄：** 人工驗收分三個情境進行。情境 1／2（頁面顯示、正常匯出）以既有真實資料直接測試。情境「部分缺檔」與「全部缺檔」的測試資料由 Assistant 建立與復原：分別將特定影片的 `Study_Note.md`（部分缺檔情境：2 個檔案）與全部 96 個 `Study_Note.md`（全部缺檔情境）暫時移至 Repository 外的暫存目錄，測試後依還原清單（manifest）移回原位，過程未修改 `outputs/history.json`／`outputs/queue.json`，也未由使用者手動搬移或編輯任何檔案。每次還原後皆重新計算磁碟上「Transcript + Study Note 皆存在」的項目數與 `git status` 異動筆數，確認與測試前基準一致（完整項目數 87、study_notes 檔案數 96、`git status` 未追蹤檔案數 127 不變），確認 Repository 未留下任何測試殘留。
+
 ### Sprint Result
 
-- [ ] Sprint 5 completed（Task 1、Task 2、Task 3 完成，待後續 Task 指示）
+- [ ] Sprint 5 completed（Task 1、Task 2、Task 3、Task 4 完成，待後續 Task 指示）
 
 ---
 

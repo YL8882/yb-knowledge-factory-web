@@ -873,6 +873,54 @@ async def export_history_package(video_id: str):
     )
 
 
+@app.get("/api/history/export-all")
+async def export_all_history_packages():
+    """History Bulk Export (Sprint 5, Task 4): packages every History entry
+    whose Transcript.md and Study_Note.md both still exist on disk into one
+    zip, one `<Video Title>_<video_id>/` folder per video. Unlike
+    /api/queue/export-all (which trusts queue_store's path fields), this
+    looks files up on disk the same way export_history_package() above does,
+    so it works for entries no longer present in queue_store and doesn't
+    inherit the Queue page's known path-vs-disk gap (see TODO.md Product
+    Backlog). Export/History Layer only — does not touch queue_store,
+    history_store's write paths, or the Transcript / Study Note pipeline.
+    """
+    candidates = []
+    for entry in history_store.list_entries():
+        transcript_path = transcript_service.find_cached_transcript(entry["video_id"])
+        study_note_path = study_note.find_cached_study_note(entry["video_id"])
+        if transcript_path and study_note_path:
+            candidates.append({
+                "video_id": entry["video_id"],
+                "title": entry["title"],
+                "transcript_path": str(transcript_path),
+                "study_note_path": str(study_note_path),
+            })
+
+    if not candidates:
+        raise HTTPException(status_code=404, detail="目前沒有已完成的知識包可匯出")
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="ybkf_history_export_all_"))
+    try:
+        zip_path = knowledge_package.build_bulk_package(dest_dir=tmp_dir, items=candidates)
+    except knowledge_package.IncompletePackageError as exc:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        missing_desc = "、".join(
+            f"{title}（缺少 {filename}）" for _, title, filename in exc.args[0]
+        )
+        raise HTTPException(
+            status_code=422,
+            detail=f"以下影片的知識包不完整，已取消匯出：{missing_desc}",
+        )
+
+    return FileResponse(
+        zip_path,
+        media_type="application/zip",
+        filename=zip_path.name,
+        background=BackgroundTask(shutil.rmtree, tmp_dir, ignore_errors=True),
+    )
+
+
 @app.get("/api/history/{video_id}/transcript", response_class=PlainTextResponse)
 async def view_history_transcript(video_id: str):
     """Knowledge Library (Sprint 5, Task 3): "開啟 Transcript" — returns the

@@ -17,9 +17,11 @@
         <main>
             <nav class="page-nav">
                 <a href="/" class="btn-text-link">← 回到首頁</a>
+                <button id="export-all-history-btn" class="btn-text-link" type="button">📦 匯出全部知識包</button>
             </nav>
 
             <section class="queue-section">
+                <div id="history-status" class="status-hidden"></div>
                 <div id="history-list" class="library-grid"></div>
                 <p id="history-empty" class="queue-empty">尚無歷史紀錄</p>
             </section>
