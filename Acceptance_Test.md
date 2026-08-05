@@ -304,16 +304,16 @@ Task 3 初版（Learning Blueprint MVP，單一線性文字樣板）Human Test �
 
 純前端 Renderer：`buildLearningBlueprintSection()` 改為依 Task 3 已產出的 `structure_type` 分派到對應排版（步驟卡片／因果箭頭／分類清單／決策樹／比較表格／時間軸／問題解法卡片／條列 fallback），取代原本的 `JSON.stringify` 顯示。不修改 API、Prompt、JSON Schema。
 
-**狀態：實作完成，尚未進行實際 Human Test（等待使用者於瀏覽器操作驗證）。**
+- [x] `structure_type` 對應正確排版顯示（不再是原始 JSON）
+- [x] `generic`（fallback）正確顯示為條列清單
+- [x] Session 內：建立 Learning Blueprint 後直接看到對應排版
+- [x] F5 重新整理：已產生項目直接使用既有 Learning Blueprint 顯示對應排版，不重新呼叫 Gemini
+- [x] 迴歸：Transcript、Study Note、既有「🧠 開始快速學習」、Queue、History、Export 皆不受影響
 
-- [ ] `structure_type` 對應正確排版顯示（不再是原始 JSON）— Not Tested
-- [ ] `generic`（fallback）正確顯示為條列清單 — Not Tested
-- [ ] Session 內：建立 Learning Blueprint 後直接看到對應排版 — Not Tested
-- [ ] F5 重新整理：已產生項目直接使用既有 Learning Blueprint 顯示對應排版，不重新呼叫 Gemini — Not Tested
-- [ ] 迴歸：Transcript、Study Note、既有「🧠 開始快速學習」、Queue、History、Export 皆不受影響 — Not Tested
+**Test Date:** 2026-08-05
+**Test Result:** PASS
 
-**Test Date:** 尚未測試
-**Test Result:** Not Tested
+**驗收方式備註：** 本項目最初於實作完成當下標記為 Not Tested（見版本歷史），因當時尚未經使用者於瀏覽器實際操作確認。使用者於 Sprint 7 整合驗收（End-to-End Test，測試影片 `C6FkQuO4Fdw`，含 `generic` fallback 路徑）過程中親自於瀏覽器完成本項目的實際驗證後回報 PASS，本次依實際結果更新，非回溯補寫。
 
 僅修改 `app/static/script.js`（`buildLearningBlueprintSection()` 改為依 `structure_type` 分派、新增 8 個 Renderer 函式）、`app/static/style.css`（新增對應排版樣式）。未修改 `app/gemini_client.py`、`app/learning_blueprint.py`、`app/main.py`、Knowledge JSON Schema、Workflow、Queue、History、Export、Chrome Extension。
 
@@ -355,7 +355,7 @@ Gemini 呼叫失敗的 Error Path，不屬於本次驗收範圍，已在 `TODO.m
 
 ### Sprint Result
 
-- [ ] Sprint 7 completed（Task 0、Task 1、Task 2、Task 3、Task 5、Task 6 完成；Task 4 實作完成待 Human Test；Task 7 待開發）
+- [ ] Sprint 7 completed（Task 0～6 完成；Task 7 待開發）
 
 ---
 
