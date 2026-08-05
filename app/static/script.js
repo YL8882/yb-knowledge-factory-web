@@ -60,6 +60,14 @@ document.addEventListener('DOMContentLoaded', function() {
     // guards its Learning Blueprint counterpart.
     const teachBackFetchInFlight = new Set();
 
+    // Action List (Sprint 7, Task 6): structured Action List JSON keyed by
+    // video_id. Same cache-across-renders reasoning as teachBackCache.
+    const actionListCache = new Map();
+
+    // Guards fetchActionListIntoCache() the same way teachBackFetchInFlight
+    // guards its Teach Back counterpart.
+    const actionListFetchInFlight = new Set();
+
     // Remembered download folder (File System Access API, Chrome/Edge only). The handle
     // itself is persisted in IndexedDB so it survives a page reload; autoDownload() writes
     // straight into it once permission is confirmed, instead of prompting on every download.
@@ -731,6 +739,27 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
 
+            // Action List (Sprint 7, Task 6): third Knowledge Structure Engine
+            // Output, generated FROM the Learning Blueprint — same gate as
+            // Teach Back above (Learning Blueprint must already exist), but
+            // independent of Teach Back itself (neither depends on the other).
+            if (hasLearningBlueprint) {
+                if (actionListCache.has(item.video_id)) {
+                    li.appendChild(buildActionListSection(item.video_id, actionListCache.get(item.video_id)));
+                } else if (item.action_list_path) {
+                    fetchActionListIntoCache(item.video_id);
+                } else {
+                    const actionListBtn = document.createElement('button');
+                    actionListBtn.className = 'queue-item-rapid-learning';
+                    actionListBtn.type = 'button';
+                    actionListBtn.innerHTML = '<span aria-hidden="true">✅</span> 開始 Action List';
+                    actionListBtn.addEventListener('click', function() {
+                        startActionList(item.video_id, actionListBtn);
+                    });
+                    li.appendChild(actionListBtn);
+                }
+            }
+
             // Knowledge Package Export (Sprint 5, Task 1): manual, separate from the
             // auto-download of the individual Transcript.md / Study_Note.md files
             // below — zips both into one <Video Title>/ package on click. Gated on
@@ -1359,6 +1388,94 @@ document.addEventListener('DOMContentLoaded', function() {
         downloadBtn.className = 'queue-item-export teach-back-download';
         downloadBtn.href = '/api/queue/' + encodeURIComponent(videoId) + '/teach-back/download';
         downloadBtn.innerHTML = '<span aria-hidden="true">⬇</span> 下載 Teach Back';
+        block.appendChild(downloadBtn);
+
+        section.appendChild(block);
+        return section;
+    }
+
+    // Action List (Sprint 7, Task 6): manual, opt-in trigger — mirrors
+    // startTeachBack()'s shape but hits the /action-list endpoint, which
+    // requires a Learning Blueprint to already exist server-side.
+    async function startActionList(videoId, button) {
+        button.disabled = true;
+        try {
+            const response = await fetch(
+                '/api/queue/' + encodeURIComponent(videoId) + '/action-list',
+                { method: 'POST' }
+            );
+            const data = await response.json();
+            if (!response.ok) {
+                showStatus(data.detail || '產生 Action List 失敗', 'error');
+                button.disabled = false;
+                return;
+            }
+            actionListCache.set(videoId, data.action_list);
+            await loadQueue();
+        } catch (error) {
+            showStatus('網路連線失敗', 'error');
+            button.disabled = false;
+        }
+    }
+
+    // Revisiting an item whose Action List was already generated in an
+    // earlier session — same reasoning as fetchTeachBackIntoCache().
+    async function fetchActionListIntoCache(videoId) {
+        if (actionListFetchInFlight.has(videoId)) {
+            return;
+        }
+        actionListFetchInFlight.add(videoId);
+        try {
+            const response = await fetch(
+                '/api/queue/' + encodeURIComponent(videoId) + '/action-list',
+                { method: 'POST' }
+            );
+            if (!response.ok) {
+                return;
+            }
+            const data = await response.json();
+            actionListCache.set(videoId, data.action_list);
+            await loadQueue();
+        } catch (error) {
+            // Silent — next poll tick (or manual refresh) retries naturally.
+        } finally {
+            actionListFetchInFlight.delete(videoId);
+        }
+    }
+
+    // Preview + Download, same shape as buildTeachBackSection() — real
+    // semantic HTML (checkbox list), not <pre> text. Action List is a single
+    // flat 3-5 item list (not per-Blueprint-item like Teach Back).
+    function buildActionListSection(videoId, data) {
+        const section = document.createElement('div');
+        section.className = 'rapid-learning-section';
+
+        const block = document.createElement('div');
+        block.className = 'rapid-learning-block';
+        block.innerHTML =
+            '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>' +
+            '<div class="rapid-learning-heading">✅ Action List</div>' +
+            '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>';
+
+        const list = document.createElement('ul');
+        list.className = 'teach-back-checklist action-list-items';
+        (data.actions || []).forEach(function(action) {
+            const li = document.createElement('li');
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.disabled = true;
+            const label = document.createElement('span');
+            label.textContent = action;
+            li.appendChild(checkbox);
+            li.appendChild(label);
+            list.appendChild(li);
+        });
+        block.appendChild(list);
+
+        const downloadBtn = document.createElement('a');
+        downloadBtn.className = 'queue-item-export teach-back-download';
+        downloadBtn.href = '/api/queue/' + encodeURIComponent(videoId) + '/action-list/download';
+        downloadBtn.innerHTML = '<span aria-hidden="true">⬇</span> 下載 Action List';
         block.appendChild(downloadBtn);
 
         section.appendChild(block);

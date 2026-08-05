@@ -180,6 +180,25 @@ _TEACH_BACK_SYSTEM_INSTRUCTION = """\
 {"items": [{"title": "...", "teaching_prompt": "...", "checklist": ["...", "...", "..."], "practice_questions": {"concept": "...", "scenario": "...", "application": "..."}}]}
 """
 
+_ACTION_LIST_SYSTEM_INSTRUCTION = """\
+你是 ActionList AI，任務是把 Learning Blueprint 的學習重點，轉成「今天就能執行」的\
+具體行動——強調可執行性與時效性，不是抽象的「應用所學」。
+
+# 規則
+
+- 使用台灣繁體中文，語氣正式、清楚。
+- 只根據提供的學習重點內容設計，不得杜撰、不得補充未提及的資訊。
+- 輸出 3～5 條，彙總全部學習重點，不是每個學習重點各自產生一條。
+- 每一條都必須符合「今天可執行」：
+  - 明確動詞開頭（例如「寫下」「練習」「找一個」「停止」，不是「了解」「應用」這種空泛動詞）
+  - 範圍有限（一個具體、可在短時間內完成的行動，不是長期目標）
+  - 不依賴額外資源取得（不需要先買東西、先找人、先報名課程才能開始）
+
+# 輸出格式（純 JSON，不要用 Markdown code fence，不要輸出 JSON 以外的文字）
+
+{"actions": ["...", "...", "..."]}
+"""
+
 _client: genai.Client | None = None
 
 
@@ -342,6 +361,54 @@ def generate_teach_back(title: str, blueprint_items: list[dict]) -> dict:
 
     if "items" not in data:
         raise GeminiGenerationError("Gemini 回傳的 JSON 缺少必要欄位（items）")
+
+    return data
+
+
+def generate_action_list(title: str, blueprint_items: list[dict]) -> dict:
+    """Same input shape as generate_teach_back() (already-extracted Learning
+    Blueprint items) but summarized into one flat 3-5 item list, not one
+    block per item — Action List is a single today-actionable takeaway for
+    the whole video, per Learn_Package_Specification_v2.0.md's definition.
+    """
+    client = _get_client()
+
+    items_text = "\n".join(
+        f"{index}. {item['title']}" + (f"：{item['detail']}" if item.get("detail") else "")
+        for index, item in enumerate(blueprint_items, start=1)
+    )
+
+    prompt = (
+        f"影片標題：{title}\n\n"
+        f"Learning Blueprint 共有 {len(blueprint_items)} 個學習重點：\n"
+        f"{items_text}\n\n"
+        "請根據以上全部學習重點，彙總產生 Action List。"
+    )
+
+    try:
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=_ACTION_LIST_SYSTEM_INSTRUCTION,
+                response_mime_type="application/json",
+                temperature=0,
+            ),
+        )
+    except Exception as exc:
+        raise GeminiGenerationError(str(exc)) from exc
+
+    text = getattr(response, "text", None)
+    if not text:
+        raise GeminiGenerationError("Gemini 未回傳有效內容")
+
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise GeminiGenerationError(f"Gemini 回傳的內容不是有效 JSON：{exc}") from exc
+
+    if "actions" not in data:
+        raise GeminiGenerationError("Gemini 回傳的 JSON 缺少必要欄位（actions）")
 
     return data
 

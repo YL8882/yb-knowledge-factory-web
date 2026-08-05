@@ -86,6 +86,9 @@ purpose: Track added, changed, fixed, and removed functionality per release.
 - 新增 `POST /api/queue/{video_id}/teach-back`：依已存在的 Learning Blueprint（不重讀 Transcript）逐一產生 Teach Back（Explain in Your Own Words／Self Check Checklist／Practice Questions／Reflection），存成 `outputs/teach_backs/TB_<title>_<video_id>.json`（結構化，供 Preview 用）與 `.md`（供下載用）
 - 新增 `GET /api/queue/{video_id}/teach-back/download`：下載 Teach Back Markdown
 - Queue Card 新增「📝 開始 Teach Back」按鈕（Learning Blueprint 已存在時顯示）與真實 HTML Preview（非純文字）
+- 新增 `POST /api/queue/{video_id}/action-list`：依已存在的 Learning Blueprint 彙總全部學習重點，產生 3～5 條「今天可執行」的行動清單，存成 `outputs/action_lists/AL_<title>_<video_id>.json` 與 `.md`
+- 新增 `GET /api/queue/{video_id}/action-list/download`：下載 Action List Markdown
+- Queue Card 新增「✅ 開始 Action List」按鈕與真實 HTML checkbox Preview
 
 ### Known Limitations
 - Structure Detection 一致性未達完全穩定：同一支內容特徵模糊的影片，重複生成可能得到不同 `structure_type`（已加 `temperature=0` 改善，未完全消除）

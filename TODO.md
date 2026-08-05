@@ -253,6 +253,20 @@ Gemini 呼叫失敗的 Error Path、Structure Detection 一致性：不屬於 Ta
 
 **過程記錄：** Assistant 以真實 API 呼叫端到端驗證（非模擬）：確認依 Learning Blueprint 的學習重點數量產生對應數量的 Teach Back（例：4 個 `cases` → 4 組 Teach Back）、每組內容具體對應該學習重點而非通用模板、`.md` 下載檔案結構與編碼正確、Learning Blueprint 不存在時正確回傳 400。使用者於瀏覽器完成 Human Test 後回報 PASS，詳見 `Acceptance_Test.md` Sprint 7 Task 5。
 
+### Task 6 — Action List ✅ Completed
+
+- [x] 根據已存在的 Learning Blueprint（不重讀 Transcript），彙總全部學習重點，產生 3～5 條「今天可執行」的行動（明確動詞開頭、範圍有限、不依賴額外資源）——與 Teach Back 不同，是單一彙總清單，不是逐一拆解每個學習重點
+- [x] 與 Study Note 既有「Action Items」區隔：Action Items＝所有建議行動，Action List＝篩選後、今天就能做的
+- [x] Preview 為真實 HTML checkbox 清單，非 `<pre>` 純文字
+- [x] 下載輸出 Markdown（`.md`，比照 Teach Back 的持久化模式）
+- [x] F5 直接讀取既有 Action List，不重新呼叫 Gemini
+
+**Feature First, Refactor Later（使用者決定，2026-08-05）：** `extract_blueprint_items()` 維持在 `app/teach_back.py`，未搬移至 `app/learning_blueprint.py`；`app/main.py` 的 `generate_action_list()` 端點直接呼叫 `teach_back.extract_blueprint_items()`。若後續有第三個以上模組共用，再另外安排 Refactor Sprint 統一整理。
+
+新增 `app/action_list.py`；修改 `app/gemini_client.py`、`app/main.py`（`POST /api/queue/{video_id}/action-list`、`GET .../action-list/download`）、`app/static/script.js`。未修改 `app/static/style.css`（重用 Task 5 既有樣式）、`app/teach_back.py`、`app/learning_blueprint.py`、Workflow、Stage Guard、Single Worker、Queue Store 寫入結構、History、Export、Chrome Extension。
+
+**過程記錄：** Assistant 以真實 API 呼叫端到端驗證：`POST /api/queue/K6npgLhA7r8/action-list` 產生 4 條內容具體、明確動詞開頭的行動；下載檔案與 Content-Disposition 正確；Learning Blueprint 不存在時正確回傳 400。驗證過程中發現 port 8000 上有非 Assistant 啟動的既有 server process（研判為使用者自行開啟），確認其為 Task 5 之前的舊程式碼（`/action-list` 回 404）後已重啟為新版，未影響任何磁碟資料。使用者於瀏覽器完成 Human Test 後回報 PASS，詳見 `Acceptance_Test.md` Sprint 7 Task 6。
+
 ---
 
 ## Acceptance

@@ -336,9 +336,26 @@ Gemini 呼叫失敗的 Error Path（`GeminiGenerationError` → HTTP 500）與 S
 
 Gemini 呼叫失敗的 Error Path，不屬於本次驗收範圍，已在 `TODO.md` Product Backlog。
 
+### Task 6 — Action List
+
+根據已存在的 Learning Blueprint（不重讀 Transcript），彙總全部學習重點，產生一份 3～5 條「今天可執行」的行動清單（明確動詞開頭、範圍有限、不依賴額外資源），與 Study Note 既有的 Action Items 區隔。Preview 為真實 HTML checkbox 清單，下載輸出 Markdown。
+
+- [x] 出現「✅ 開始 Action List」按鈕（與「📝 開始 Teach Back」平行顯示，Learning Blueprint 已存在時顯示）
+- [x] 點擊後顯示 3～5 條行動，真實 checkbox 清單，非純文字
+- [x] 「⬇ 下載 Action List」正常下載 `.md`
+- [x] F5 重新整理直接顯示，不重新呼叫 Gemini
+- [x] 迴歸：Transcript、Study Note、Learning Blueprint、Teach Back、Queue、History、Export 皆不受影響
+
+**Test Date:** 2026-08-05
+**Test Result:** PASS
+
+僅新增 `app/action_list.py`；修改 `app/gemini_client.py`（新增 Prompt／`generate_action_list()`）、`app/main.py`（新增 `POST /api/queue/{video_id}/action-list`、`GET .../action-list/download`）、`app/static/script.js`。未修改 `app/static/style.css`（重用 Task 5 既有樣式）、`app/teach_back.py`（`extract_blueprint_items()` 依使用者決定 Feature First / Refactor Later，維持原位，由 `main.py` 直接呼叫，未搬移）、Workflow、Stage Guard、Single Worker、Queue Store 寫入結構、History、Export、Chrome Extension。
+
+Gemini 呼叫失敗的 Error Path，不屬於本次驗收範圍，已在 `TODO.md` Product Backlog。
+
 ### Sprint Result
 
-- [ ] Sprint 7 completed（Task 0、Task 1、Task 2、Task 3、Task 5 完成；Task 4 實作完成待 Human Test；Task 6～7 待開發）
+- [ ] Sprint 7 completed（Task 0、Task 1、Task 2、Task 3、Task 5、Task 6 完成；Task 4 實作完成待 Human Test；Task 7 待開發）
 
 ---
 
