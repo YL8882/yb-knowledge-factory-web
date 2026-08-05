@@ -89,6 +89,9 @@ purpose: Track added, changed, fixed, and removed functionality per release.
 - 新增 `POST /api/queue/{video_id}/action-list`：依已存在的 Learning Blueprint 彙總全部學習重點，產生 3～5 條「今天可執行」的行動清單，存成 `outputs/action_lists/AL_<title>_<video_id>.json` 與 `.md`
 - 新增 `GET /api/queue/{video_id}/action-list/download`：下載 Action List Markdown
 - Queue Card 新增「✅ 開始 Action List」按鈕與真實 HTML checkbox Preview
+- 新增 `POST /api/queue/{video_id}/review`：依已存在的 Learning Blueprint 產生 Review（Active Recall）——One Sentence Recall／Recall Questions／Workflow Recall／Blank Filling（Gemini 自行判斷是否適合，不強制）／Reflection＋Self Score，存成 `outputs/reviews/RV_<title>_<video_id>.json` 與 `.md`
+- 新增 `GET /api/queue/{video_id}/review/download`：下載 Review Markdown
+- Queue Card 新增「🔄 開始 Review」按鈕，每題參考答案預設隱藏，需點擊「Show Reference Answer」才展開
 
 ### Known Limitations
 - Structure Detection 一致性未達完全穩定：同一支內容特徵模糊的影片，重複生成可能得到不同 `structure_type`（已加 `temperature=0` 改善，未完全消除）

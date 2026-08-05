@@ -975,6 +975,62 @@ main {
     margin-top: 12px;
 }
 
+/* Review / Active Recall (Sprint 7, Task 7) */
+
+.review-item {
+    margin: 6px 0 10px;
+}
+
+.review-prompt {
+    color: #374151;
+    margin: 0 0 6px;
+}
+
+.review-toggle {
+    display: inline-block;
+    padding: 3px 10px;
+    border: 1px solid #c4b5fd;
+    border-radius: 999px;
+    background: none;
+    color: #7c3aed;
+    font-size: 0.82em;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.review-toggle:hover {
+    background: #f5f3ff;
+}
+
+.review-answer {
+    margin: 6px 0 0;
+    padding: 6px 10px;
+    border-left: 3px solid #c4b5fd;
+    color: #5b21b6;
+    background: #f5f3ff;
+    font-size: 0.92em;
+}
+
+.review-answer.is-hidden {
+    display: none;
+}
+
+.review-self-score-options {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+}
+
+.review-self-score-option {
+    padding: 2px 10px;
+    border: 1px solid #e6d9fb;
+    border-radius: 999px;
+    color: #6b7280;
+    font-size: 0.85em;
+}
+
 .queue-empty {
     color: #bdc3c7;
     text-align: center;

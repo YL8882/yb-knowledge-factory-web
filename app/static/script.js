@@ -68,6 +68,20 @@ document.addEventListener('DOMContentLoaded', function() {
     // guards its Teach Back counterpart.
     const actionListFetchInFlight = new Set();
 
+    // Review (Sprint 7, Task 7): structured Review JSON keyed by video_id.
+    // Same cache-across-renders reasoning as actionListCache.
+    const reviewCache = new Map();
+
+    // Guards fetchReviewIntoCache() the same way actionListFetchInFlight
+    // guards its Action List counterpart.
+    const reviewFetchInFlight = new Set();
+
+    // Show/Hide Reference Answer state per question (Task 7) — keyed by a
+    // synthetic "videoId::sectionKey::index" string so state survives the
+    // full renderQueue() rebuild every poll tick, same pattern as
+    // expandedKnowledgeOutlineCards (Task 2).
+    const revealedReviewAnswers = new Set();
+
     // Remembered download folder (File System Access API, Chrome/Edge only). The handle
     // itself is persisted in IndexedDB so it survives a page reload; autoDownload() writes
     // straight into it once permission is confirmed, instead of prompting on every download.
@@ -757,6 +771,26 @@ document.addEventListener('DOMContentLoaded', function() {
                         startActionList(item.video_id, actionListBtn);
                     });
                     li.appendChild(actionListBtn);
+                }
+            }
+
+            // Review (Sprint 7, Task 7): fourth Knowledge Structure Engine
+            // Output (Active Recall), generated FROM the Learning Blueprint —
+            // same gate as Teach Back/Action List, independent of both.
+            if (hasLearningBlueprint) {
+                if (reviewCache.has(item.video_id)) {
+                    li.appendChild(buildReviewSection(item.video_id, reviewCache.get(item.video_id)));
+                } else if (item.review_path) {
+                    fetchReviewIntoCache(item.video_id);
+                } else {
+                    const reviewBtn = document.createElement('button');
+                    reviewBtn.className = 'queue-item-rapid-learning';
+                    reviewBtn.type = 'button';
+                    reviewBtn.innerHTML = '<span aria-hidden="true">🔄</span> 開始 Review';
+                    reviewBtn.addEventListener('click', function() {
+                        startReview(item.video_id, reviewBtn);
+                    });
+                    li.appendChild(reviewBtn);
                 }
             }
 
@@ -1476,6 +1510,194 @@ document.addEventListener('DOMContentLoaded', function() {
         downloadBtn.className = 'queue-item-export teach-back-download';
         downloadBtn.href = '/api/queue/' + encodeURIComponent(videoId) + '/action-list/download';
         downloadBtn.innerHTML = '<span aria-hidden="true">⬇</span> 下載 Action List';
+        block.appendChild(downloadBtn);
+
+        section.appendChild(block);
+        return section;
+    }
+
+    // Review (Sprint 7, Task 7): manual, opt-in trigger — mirrors
+    // startActionList()'s shape but hits the /review endpoint, which
+    // requires a Learning Blueprint to already exist server-side.
+    async function startReview(videoId, button) {
+        button.disabled = true;
+        try {
+            const response = await fetch(
+                '/api/queue/' + encodeURIComponent(videoId) + '/review',
+                { method: 'POST' }
+            );
+            const data = await response.json();
+            if (!response.ok) {
+                showStatus(data.detail || '產生 Review 失敗', 'error');
+                button.disabled = false;
+                return;
+            }
+            reviewCache.set(videoId, data.review);
+            await loadQueue();
+        } catch (error) {
+            showStatus('網路連線失敗', 'error');
+            button.disabled = false;
+        }
+    }
+
+    // Revisiting an item whose Review was already generated in an earlier
+    // session — same reasoning as fetchActionListIntoCache().
+    async function fetchReviewIntoCache(videoId) {
+        if (reviewFetchInFlight.has(videoId)) {
+            return;
+        }
+        reviewFetchInFlight.add(videoId);
+        try {
+            const response = await fetch(
+                '/api/queue/' + encodeURIComponent(videoId) + '/review',
+                { method: 'POST' }
+            );
+            if (!response.ok) {
+                return;
+            }
+            const data = await response.json();
+            reviewCache.set(videoId, data.review);
+            await loadQueue();
+        } catch (error) {
+            // Silent — next poll tick (or manual refresh) retries naturally.
+        } finally {
+            reviewFetchInFlight.delete(videoId);
+        }
+    }
+
+    // Fixed reflection prompts + Self Score options — mirrors
+    // app/review.py's _REFLECTION_QUESTIONS / _SELF_SCORE_OPTIONS exactly
+    // (not Gemini-generated, not persisted; Self Score is a pure self-
+    // assessment affordance per Task 7's confirmed design).
+    const REVIEW_REFLECTION_QUESTIONS = [
+        '這次測驗中，哪些地方答得出來？',
+        '哪些地方完全想不起來？',
+        '需要回頭重看哪一段？',
+        '這次複習後，記憶有變得更清楚嗎？',
+    ];
+    const REVIEW_SELF_SCORE_OPTIONS = ['0%', '25%', '50%', '75%', '100%'];
+
+    // One recall question: prompt always visible, reference answer hidden
+    // behind a toggle by default (Task 7's confirmed design — think first,
+    // then reveal). revealedReviewAnswers persists the toggle state across
+    // renderQueue() rebuilds, keyed by videoId+section+index so each question
+    // in each section of each card is independent.
+    function buildRecallItem(videoId, sectionKey, index, promptText, referenceAnswer) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'review-item';
+
+        const promptEl = document.createElement('p');
+        promptEl.className = 'review-prompt';
+        promptEl.textContent = promptText || '';
+        wrapper.appendChild(promptEl);
+
+        const revealKey = videoId + '::' + sectionKey + '::' + index;
+        const isRevealed = revealedReviewAnswers.has(revealKey);
+
+        const toggleBtn = document.createElement('button');
+        toggleBtn.className = 'review-toggle';
+        toggleBtn.type = 'button';
+        toggleBtn.textContent = isRevealed ? '▲ 收合' : '▶ Show Reference Answer';
+        wrapper.appendChild(toggleBtn);
+
+        const answerEl = document.createElement('p');
+        answerEl.className = 'review-answer' + (isRevealed ? '' : ' is-hidden');
+        answerEl.textContent = referenceAnswer || '';
+        wrapper.appendChild(answerEl);
+
+        // Pure UI toggle — no fetch, no re-render, just a class flip, same
+        // pattern as the Task 2 Knowledge Outline expand/collapse toggle.
+        toggleBtn.addEventListener('click', function() {
+            const nowRevealed = answerEl.classList.toggle('is-hidden') === false;
+            toggleBtn.textContent = nowRevealed ? '▲ 收合' : '▶ Show Reference Answer';
+            if (nowRevealed) {
+                revealedReviewAnswers.add(revealKey);
+            } else {
+                revealedReviewAnswers.delete(revealKey);
+            }
+        });
+
+        return wrapper;
+    }
+
+    function buildReviewSubheading(text) {
+        const heading = document.createElement('div');
+        heading.className = 'teach-back-subheading';
+        heading.textContent = text;
+        return heading;
+    }
+
+    // Preview + Download. Blank Filling section only renders if Gemini
+    // judged the content suitable (data.blank_filling may be empty/absent —
+    // Task 7's confirmed design: not forced).
+    function buildReviewSection(videoId, data) {
+        const section = document.createElement('div');
+        section.className = 'rapid-learning-section';
+
+        const block = document.createElement('div');
+        block.className = 'rapid-learning-block';
+        block.innerHTML =
+            '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>' +
+            '<div class="rapid-learning-heading">🔄 Review（Active Recall）</div>' +
+            '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>';
+
+        const oneSentence = data.one_sentence_recall;
+        if (oneSentence) {
+            block.appendChild(buildReviewSubheading('One Sentence Recall'));
+            block.appendChild(buildRecallItem(videoId, 'one_sentence', 0, oneSentence.prompt, oneSentence.reference_answer));
+        }
+
+        const recallQuestions = data.recall_questions || [];
+        if (recallQuestions.length) {
+            block.appendChild(buildReviewSubheading('Recall Questions'));
+            recallQuestions.forEach(function(q, index) {
+                block.appendChild(buildRecallItem(videoId, 'recall_question', index, q.prompt, q.reference_answer));
+            });
+        }
+
+        const workflowRecall = data.workflow_recall;
+        if (workflowRecall) {
+            block.appendChild(buildReviewSubheading('Workflow Recall'));
+            block.appendChild(buildRecallItem(videoId, 'workflow', 0, workflowRecall.prompt, workflowRecall.reference_answer));
+        }
+
+        const blankFilling = data.blank_filling || [];
+        if (blankFilling.length) {
+            block.appendChild(buildReviewSubheading('Blank Filling'));
+            blankFilling.forEach(function(item, index) {
+                block.appendChild(buildRecallItem(videoId, 'blank_filling', index, item.prompt, item.answer));
+            });
+        }
+
+        block.appendChild(buildReviewSubheading('Reflection'));
+        const reflectionList = document.createElement('ul');
+        reflectionList.className = 'teach-back-reflection';
+        REVIEW_REFLECTION_QUESTIONS.forEach(function(question) {
+            const li = document.createElement('li');
+            li.textContent = question;
+            reflectionList.appendChild(li);
+        });
+        block.appendChild(reflectionList);
+
+        const selfScoreLabel = document.createElement('div');
+        selfScoreLabel.className = 'teach-back-subheading';
+        selfScoreLabel.textContent = 'Self Score';
+        block.appendChild(selfScoreLabel);
+
+        const selfScoreOptions = document.createElement('div');
+        selfScoreOptions.className = 'review-self-score-options';
+        REVIEW_SELF_SCORE_OPTIONS.forEach(function(option) {
+            const span = document.createElement('span');
+            span.className = 'review-self-score-option';
+            span.textContent = option;
+            selfScoreOptions.appendChild(span);
+        });
+        block.appendChild(selfScoreOptions);
+
+        const downloadBtn = document.createElement('a');
+        downloadBtn.className = 'queue-item-export teach-back-download';
+        downloadBtn.href = '/api/queue/' + encodeURIComponent(videoId) + '/review/download';
+        downloadBtn.innerHTML = '<span aria-hidden="true">⬇</span> 下載 Review';
         block.appendChild(downloadBtn);
 
         section.appendChild(block);

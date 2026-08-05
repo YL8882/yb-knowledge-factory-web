@@ -199,6 +199,36 @@ _ACTION_LIST_SYSTEM_INSTRUCTION = """\
 {"actions": ["...", "...", "..."]}
 """
 
+_REVIEW_SYSTEM_INSTRUCTION = """\
+你是 Review AI（Active Recall），任務是幫助學習者驗證「不看資料，還記得多少」——\
+不是重新整理內容，也不是產生總覽 Dashboard。
+
+# 規則
+
+- 使用台灣繁體中文，語氣正式、清楚。
+- 只根據提供的學習重點內容設計，不得杜撰、不得補充未提及的資訊。
+- 每一題都要有 prompt（引導使用者「先回答」的問題，不能包含答案）與\
+reference_answer（供使用者事後比對用，不是唯一正確答案，是參考）。
+
+# 四個區塊
+
+1. one_sentence_recall：1 題，prompt 固定引導使用者「不看任何資料，用一句話說出這支\
+影片的核心目的」，reference_answer 由你依全部學習重點彙總生成（不要照抄某一個學習\
+重點，要綜合全部）。
+2. recall_questions：你收到幾個學習重點，就要出幾題，順序需一致，每題針對該學習重點\
+設計一個回想問題（不能直接把該學習重點的內容當作問題本身，要設計成需要使用者主動回想\
+的提問方式）。
+3. workflow_recall：1 題，prompt 固定引導使用者「依序說出這支影片的知識架構／流程」，\
+reference_answer 依全部學習重點的順序，彙總成一段簡短敘述。
+4. blank_filling：由你判斷這支影片的內容是否適合設計填空題（例如內容偏抽象、沒有\
+明確關鍵詞或術語可挖空，就不適合）。適合的話，產生 3～5 題，每題挖空 1～2 個關鍵詞\
+（用 ___ 標示空格位置）；不適合的話，回傳空陣列 []，不要勉強生成。
+
+# 輸出格式（純 JSON，不要用 Markdown code fence，不要輸出 JSON 以外的文字）
+
+{"one_sentence_recall": {"prompt": "...", "reference_answer": "..."}, "recall_questions": [{"prompt": "...", "reference_answer": "..."}], "workflow_recall": {"prompt": "...", "reference_answer": "..."}, "blank_filling": [{"prompt": "___ 是為了解決 ___ 的問題。", "answer": "..."}]}
+"""
+
 _client: genai.Client | None = None
 
 
@@ -409,6 +439,58 @@ def generate_action_list(title: str, blueprint_items: list[dict]) -> dict:
 
     if "actions" not in data:
         raise GeminiGenerationError("Gemini 回傳的 JSON 缺少必要欄位（actions）")
+
+    return data
+
+
+def generate_review(title: str, blueprint_items: list[dict]) -> dict:
+    """Same input shape as generate_teach_back()/generate_action_list()
+    (already-extracted Learning Blueprint items) — Review only depends on
+    Learning Blueprint, not on the separate Knowledge Outline/One Sentence
+    artifact, so its trigger condition stays as simple as Teach Back/Action
+    List (see Task 7 Proposal decision #1).
+    """
+    client = _get_client()
+
+    items_text = "\n".join(
+        f"{index}. {item['title']}" + (f"：{item['detail']}" if item.get("detail") else "")
+        for index, item in enumerate(blueprint_items, start=1)
+    )
+
+    prompt = (
+        f"影片標題：{title}\n\n"
+        f"Learning Blueprint 共有 {len(blueprint_items)} 個學習重點：\n"
+        f"{items_text}\n\n"
+        "請根據以上學習重點，產生 Review（Active Recall）的四個區塊。"
+    )
+
+    try:
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=_REVIEW_SYSTEM_INSTRUCTION,
+                response_mime_type="application/json",
+                temperature=0,
+            ),
+        )
+    except Exception as exc:
+        raise GeminiGenerationError(str(exc)) from exc
+
+    text = getattr(response, "text", None)
+    if not text:
+        raise GeminiGenerationError("Gemini 未回傳有效內容")
+
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise GeminiGenerationError(f"Gemini 回傳的內容不是有效 JSON：{exc}") from exc
+
+    required_fields = {"one_sentence_recall", "recall_questions", "workflow_recall"}
+    if not required_fields.issubset(data.keys()):
+        raise GeminiGenerationError(
+            f"Gemini 回傳的 JSON 缺少必要欄位（{', '.join(sorted(required_fields - data.keys()))}）"
+        )
 
     return data
 

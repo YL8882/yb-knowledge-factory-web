@@ -353,9 +353,28 @@ Gemini 呼叫失敗的 Error Path，不屬於本次驗收範圍，已在 `TODO.m
 
 Gemini 呼叫失敗的 Error Path，不屬於本次驗收範圍，已在 `TODO.md` Product Backlog。
 
+### Task 7 — Review（Active Recall）
+
+根據已存在的 Learning Blueprint（不重讀 Transcript），產生 One Sentence Recall／Recall Questions／Workflow Recall／Blank Filling（Gemini 自行判斷是否適合，不強制）／Reflection＋Self Score。設計核心：先引導使用者自行回答，答案預設隱藏，需點擊「Show Reference Answer」才展開，不是直接顯示內容。
+
+- [x] 出現「🔄 開始 Review」按鈕（與「📝 開始 Teach Back」「✅ 開始 Action List」平行顯示，Learning Blueprint 已存在時顯示）
+- [x] 每題預設只顯示問題，答案隱藏；點擊「▶ Show Reference Answer」才展開參考答案
+- [x] Blank Filling 區塊：內容不適合時整段不顯示，不強制出現
+- [x] Reflection 區塊包含 Self Score（百分比選項）
+- [x] 「⬇ 下載 Review」正常下載 `.md`
+- [x] F5 重新整理直接顯示，不重新呼叫 Gemini
+- [x] 迴歸：Transcript、Study Note、Learning Blueprint、Teach Back、Action List、Queue、History、Export 皆不受影響
+
+**Test Date:** 2026-08-05
+**Test Result:** PASS
+
+僅新增 `app/review.py`；修改 `app/gemini_client.py`（新增 Prompt／`generate_review()`）、`app/main.py`（新增 `POST /api/queue/{video_id}/review`、`GET .../review/download`）、`app/static/script.js`、`app/static/style.css`（新增 Show/Hide Answer 與 Self Score 樣式）。未修改 `app/teach_back.py`（`extract_blueprint_items()` 依 Feature First / Refactor Later 原則，維持原位，由 `main.py` 直接呼叫）、Workflow、Stage Guard、Single Worker、Queue Store 寫入結構、History、Export、Chrome Extension。
+
+Gemini 呼叫失敗的 Error Path，不屬於本次驗收範圍，已在 `TODO.md` Product Backlog。
+
 ### Sprint Result
 
-- [ ] Sprint 7 completed（Task 0～6 完成；Task 7 待開發）
+- [x] Sprint 7 completed（Task 0～7 全部完成並驗收通過）
 
 ---
 

@@ -20,6 +20,7 @@ import knowledge_outline
 import knowledge_package
 import learning_blueprint
 import queue_store
+import review
 import study_note
 import teach_back
 import transcript as transcript_service
@@ -990,6 +991,72 @@ async def download_action_list(video_id: str):
     md_path = action_list.find_cached_action_list_markdown(video_id)
     if not md_path or not md_path.exists():
         raise HTTPException(status_code=404, detail="Action List 檔案不存在")
+
+    return FileResponse(
+        md_path,
+        media_type="text/markdown",
+        filename=md_path.name,
+    )
+
+
+@app.post("/api/queue/{video_id}/review")
+async def generate_review(video_id: str):
+    """Knowledge Structure Engine (Sprint 7, Task 7): fourth Output of the
+    Engine (Active Recall) — generated FROM the Learning Blueprint, same
+    pattern as Teach Back (Task 5) / Action List (Task 6). Reuses
+    teach_back.extract_blueprint_items() directly, not moved (Feature First,
+    Refactor Later — Task 6 decision).
+    """
+    try:
+        item = queue_store.get_item(video_id)
+    except queue_store.QueueItemNotFoundError:
+        raise HTTPException(status_code=404, detail="項目不存在")
+
+    cached_path = review.find_cached_review(video_id)
+    if cached_path:
+        return {
+            "video_id": video_id,
+            "review": review.load_review(cached_path),
+            "file_path": str(cached_path),
+        }
+
+    blueprint_path = item.get("learning_blueprint_path")
+    if not blueprint_path or not Path(blueprint_path).exists():
+        raise HTTPException(status_code=400, detail="請先建立 Learning Blueprint")
+
+    blueprint_data = learning_blueprint.load_learning_blueprint(Path(blueprint_path))
+    blueprint_items = teach_back.extract_blueprint_items(
+        blueprint_data.get("structure_type", "generic"), blueprint_data.get("content", {})
+    )
+
+    try:
+        data = gemini_client.generate_review(title=item["title"], blueprint_items=blueprint_items)
+    except gemini_client.GeminiConfigError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    except gemini_client.GeminiGenerationError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=error_messages.classify_error(str(exc), stage="studynote"),
+        )
+
+    output_path = review.save_review(video_id=video_id, title=item["title"], data=data)
+
+    # Additive field only — no `status` change, so this never interacts with
+    # _stage_rank() / Stage Guard's forward-only state machine.
+    queue_store.update_item(video_id, review_path=str(output_path))
+
+    return {
+        "video_id": video_id,
+        "review": data,
+        "file_path": str(output_path),
+    }
+
+
+@app.get("/api/queue/{video_id}/review/download")
+async def download_review(video_id: str):
+    md_path = review.find_cached_review_markdown(video_id)
+    if not md_path or not md_path.exists():
+        raise HTTPException(status_code=404, detail="Review 檔案不存在")
 
     return FileResponse(
         md_path,

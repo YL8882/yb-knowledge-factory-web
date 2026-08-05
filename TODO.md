@@ -267,6 +267,20 @@ Gemini 呼叫失敗的 Error Path、Structure Detection 一致性：不屬於 Ta
 
 **過程記錄：** Assistant 以真實 API 呼叫端到端驗證：`POST /api/queue/K6npgLhA7r8/action-list` 產生 4 條內容具體、明確動詞開頭的行動；下載檔案與 Content-Disposition 正確；Learning Blueprint 不存在時正確回傳 400。驗證過程中發現 port 8000 上有非 Assistant 啟動的既有 server process（研判為使用者自行開啟），確認其為 Task 5 之前的舊程式碼（`/action-list` 回 404）後已重啟為新版，未影響任何磁碟資料。使用者於瀏覽器完成 Human Test 後回報 PASS，詳見 `Acceptance_Test.md` Sprint 7 Task 6。
 
+### Task 7 — Review（Active Recall）✅ Completed
+
+- [x] 根據已存在的 Learning Blueprint，產生 One Sentence Recall／Recall Questions（每個學習重點各一題，比照 Teach Back 的 per-item 模式）／Workflow Recall／Blank Filling（Gemini 自行判斷是否適合，不強制生成）
+- [x] Reflection 為固定 4 題模板（非 Gemini 生成，見 `review.py` `_REFLECTION_QUESTIONS`，聚焦「回想表現」，與 Teach Back 的 Reflection 刻意不同）＋ Self Score（固定百分比選項，純 UI 自我評估，不儲存）
+- [x] Preview 預設隱藏每題參考答案，需點擊「▶ Show Reference Answer」才展開（先回想、後比對，不直接顯示答案）
+- [x] 下載輸出 Markdown（`.md`，答案不隱藏，完整記錄供日後查閱）
+- [x] F5 直接讀取既有 Review，不重新呼叫 Gemini
+
+新增 `app/review.py`；修改 `app/gemini_client.py`、`app/main.py`（`POST /api/queue/{video_id}/review`、`GET .../review/download`）、`app/static/script.js`、`app/static/style.css`。依 Feature First, Refactor Later 原則，`extract_blueprint_items()` 維持在 `app/teach_back.py`，未搬移，`main.py` 直接呼叫。未修改 Workflow、Stage Guard、Single Worker、Queue Store 寫入結構、History、Export、Chrome Extension。
+
+**過程記錄：** Assistant 以真實 API 呼叫端到端驗證：對內容清楚的影片（`M7Tjx0aXrQ8`）產生高品質、內容具體的 Review（4 題 Recall Questions、5 題 Blank Filling，皆客製化非模板）；對內容本身單薄的既有測試影片，Review 正確反映其 Learning Blueprint 內容有限的既有狀況（非新增問題）。驗證過程中一度誤判內容為亂碼，經改用檔案直接核對（避開 bash/curl 終端機顯示的既有編碼顯示問題）後確認資料完全正確，純屬顯示層級的誤判，非真實資料損毀。使用者於瀏覽器完成 Human Test 後回報 PASS，詳見 `Acceptance_Test.md` Sprint 7 Task 7。
+
+**Sprint 7（Rapid Learning Engine → Knowledge Structure Engine）全部完成：Task 0～7。**
+
 ---
 
 ## Acceptance
