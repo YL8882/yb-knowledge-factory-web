@@ -83,6 +83,9 @@ purpose: Track added, changed, fixed, and removed functionality per release.
 - `Why.md`「我們真正是什麼」擴充為四層能力對照表（Study Note／Knowledge Structure Engine／Learning Blueprint／Teach Back）
 
 - Queue Card Learning Blueprint 顯示改為依 `structure_type` 分派的排版（Flow 步驟卡片／Comparison 表格／Timeline 時間軸／Decision 決策樹／Classification 分類清單／Cause & Effect 因果箭頭／Problem→Solution 四段卡片／generic 條列），取代 Task 3 的 `JSON.stringify` 顯示
+- 新增 `POST /api/queue/{video_id}/teach-back`：依已存在的 Learning Blueprint（不重讀 Transcript）逐一產生 Teach Back（Explain in Your Own Words／Self Check Checklist／Practice Questions／Reflection），存成 `outputs/teach_backs/TB_<title>_<video_id>.json`（結構化，供 Preview 用）與 `.md`（供下載用）
+- 新增 `GET /api/queue/{video_id}/teach-back/download`：下載 Teach Back Markdown
+- Queue Card 新增「📝 開始 Teach Back」按鈕（Learning Blueprint 已存在時顯示）與真實 HTML Preview（非純文字）
 
 ### Known Limitations
 - Structure Detection 一致性未達完全穩定：同一支內容特徵模糊的影片，重複生成可能得到不同 `structure_type`（已加 `temperature=0` 改善，未完全消除）

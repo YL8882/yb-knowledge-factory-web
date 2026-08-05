@@ -52,6 +52,14 @@ document.addEventListener('DOMContentLoaded', function() {
     // knowledgeOutlineFetchInFlight guards its Knowledge Outline counterpart.
     const learningBlueprintFetchInFlight = new Set();
 
+    // Teach Back (Sprint 7, Task 5): structured Teach Back JSON keyed by
+    // video_id. Same cache-across-renders reasoning as learningBlueprintCache.
+    const teachBackCache = new Map();
+
+    // Guards fetchTeachBackIntoCache() the same way learningBlueprintFetchInFlight
+    // guards its Learning Blueprint counterpart.
+    const teachBackFetchInFlight = new Set();
+
     // Remembered download folder (File System Access API, Chrome/Edge only). The handle
     // itself is persisted in IndexedDB so it survives a page reload; autoDownload() writes
     // straight into it once permission is confirmed, instead of prompting on every download.
@@ -701,6 +709,28 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
 
+            // Teach Back (Sprint 7, Task 5): second Knowledge Structure Engine
+            // Output, generated FROM the Learning Blueprint — button only
+            // appears once a Learning Blueprint exists (cached client-side or
+            // already on disk), mirroring the hasStudyNote gate pattern above.
+            const hasLearningBlueprint = learningBlueprintCache.has(item.video_id) || Boolean(item.learning_blueprint_path);
+            if (hasLearningBlueprint) {
+                if (teachBackCache.has(item.video_id)) {
+                    li.appendChild(buildTeachBackSection(item.video_id, teachBackCache.get(item.video_id)));
+                } else if (item.teach_back_path) {
+                    fetchTeachBackIntoCache(item.video_id);
+                } else {
+                    const teachBackBtn = document.createElement('button');
+                    teachBackBtn.className = 'queue-item-rapid-learning';
+                    teachBackBtn.type = 'button';
+                    teachBackBtn.innerHTML = '<span aria-hidden="true">📝</span> 開始 Teach Back';
+                    teachBackBtn.addEventListener('click', function() {
+                        startTeachBack(item.video_id, teachBackBtn);
+                    });
+                    li.appendChild(teachBackBtn);
+                }
+            }
+
             // Knowledge Package Export (Sprint 5, Task 1): manual, separate from the
             // auto-download of the individual Transcript.md / Study_Note.md files
             // below — zips both into one <Video Title>/ package on click. Gated on
@@ -1167,6 +1197,169 @@ document.addEventListener('DOMContentLoaded', function() {
         const contentEl = renderer(data.content || {});
         contentEl.classList.add('rapid-learning-content');
         block.appendChild(contentEl);
+
+        section.appendChild(block);
+        return section;
+    }
+
+    // Teach Back (Sprint 7, Task 5): manual, opt-in trigger — mirrors
+    // startLearningBlueprint()'s shape but hits the /teach-back endpoint,
+    // which requires a Learning Blueprint to already exist server-side.
+    async function startTeachBack(videoId, button) {
+        button.disabled = true;
+        try {
+            const response = await fetch(
+                '/api/queue/' + encodeURIComponent(videoId) + '/teach-back',
+                { method: 'POST' }
+            );
+            const data = await response.json();
+            if (!response.ok) {
+                showStatus(data.detail || '產生 Teach Back 失敗', 'error');
+                button.disabled = false;
+                return;
+            }
+            teachBackCache.set(videoId, data.teach_back);
+            await loadQueue();
+        } catch (error) {
+            showStatus('網路連線失敗', 'error');
+            button.disabled = false;
+        }
+    }
+
+    // Revisiting an item whose Teach Back was already generated in an earlier
+    // session — same reasoning as fetchLearningBlueprintIntoCache().
+    async function fetchTeachBackIntoCache(videoId) {
+        if (teachBackFetchInFlight.has(videoId)) {
+            return;
+        }
+        teachBackFetchInFlight.add(videoId);
+        try {
+            const response = await fetch(
+                '/api/queue/' + encodeURIComponent(videoId) + '/teach-back',
+                { method: 'POST' }
+            );
+            if (!response.ok) {
+                return;
+            }
+            const data = await response.json();
+            teachBackCache.set(videoId, data.teach_back);
+            await loadQueue();
+        } catch (error) {
+            // Silent — next poll tick (or manual refresh) retries naturally.
+        } finally {
+            teachBackFetchInFlight.delete(videoId);
+        }
+    }
+
+    // Fixed reflection prompts — mirrors app/teach_back.py's
+    // _REFLECTION_QUESTIONS exactly (not Gemini-generated, same for every
+    // Blueprint item; see that module for why).
+    const TEACH_BACK_REFLECTION_QUESTIONS = [
+        '今天最大的收穫？',
+        '哪裡還不理解？',
+        '下一步準備做什麼？',
+        '什麼時候會再次使用？',
+    ];
+
+    // Renders one Blueprint's Teach Back block as real semantic HTML (real
+    // checkbox <input>s, real headings) — not <pre> text — per Task 5's
+    // "match Study Note's reading experience" requirement.
+    function buildTeachBackItem(index, item) {
+        const block = document.createElement('div');
+        block.className = 'teach-back-item';
+
+        const heading = document.createElement('h4');
+        heading.className = 'teach-back-item-heading';
+        heading.textContent = 'Blueprint ' + (index + 1) + '：' + (item.title || '');
+        block.appendChild(heading);
+
+        const promptHeading = document.createElement('div');
+        promptHeading.className = 'teach-back-subheading';
+        promptHeading.textContent = 'Explain in Your Own Words';
+        block.appendChild(promptHeading);
+
+        const promptText = document.createElement('p');
+        promptText.className = 'teach-back-prompt';
+        promptText.textContent = item.teaching_prompt || '';
+        block.appendChild(promptText);
+
+        const checklistHeading = document.createElement('div');
+        checklistHeading.className = 'teach-back-subheading';
+        checklistHeading.textContent = 'Self Check Checklist';
+        block.appendChild(checklistHeading);
+
+        const checklist = document.createElement('ul');
+        checklist.className = 'teach-back-checklist';
+        (item.checklist || []).forEach(function(check) {
+            const li = document.createElement('li');
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.disabled = true;
+            const label = document.createElement('span');
+            label.textContent = check;
+            li.appendChild(checkbox);
+            li.appendChild(label);
+            checklist.appendChild(li);
+        });
+        block.appendChild(checklist);
+
+        const questionsHeading = document.createElement('div');
+        questionsHeading.className = 'teach-back-subheading';
+        questionsHeading.textContent = 'Practice Questions';
+        block.appendChild(questionsHeading);
+
+        const questions = document.createElement('dl');
+        questions.className = 'teach-back-questions';
+        const q = item.practice_questions || {};
+        [['Concept', q.concept], ['Scenario', q.scenario], ['Application', q.application]].forEach(function(pair) {
+            const dt = document.createElement('dt');
+            dt.textContent = pair[0];
+            const dd = document.createElement('dd');
+            dd.textContent = pair[1] || '';
+            questions.appendChild(dt);
+            questions.appendChild(dd);
+        });
+        block.appendChild(questions);
+
+        const reflectionHeading = document.createElement('div');
+        reflectionHeading.className = 'teach-back-subheading';
+        reflectionHeading.textContent = 'Reflection';
+        block.appendChild(reflectionHeading);
+
+        const reflectionList = document.createElement('ul');
+        reflectionList.className = 'teach-back-reflection';
+        TEACH_BACK_REFLECTION_QUESTIONS.forEach(function(question) {
+            const li = document.createElement('li');
+            li.textContent = question;
+            reflectionList.appendChild(li);
+        });
+        block.appendChild(reflectionList);
+
+        return block;
+    }
+
+    // Preview + Download, per Task 5's confirmed UI flow: Learning Blueprint
+    // → Generate Teach Back → Preview → Download Markdown.
+    function buildTeachBackSection(videoId, data) {
+        const section = document.createElement('div');
+        section.className = 'rapid-learning-section';
+
+        const block = document.createElement('div');
+        block.className = 'rapid-learning-block';
+        block.innerHTML =
+            '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>' +
+            '<div class="rapid-learning-heading">📝 Teach Back</div>' +
+            '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>';
+
+        (data.items || []).forEach(function(item, index) {
+            block.appendChild(buildTeachBackItem(index, item));
+        });
+
+        const downloadBtn = document.createElement('a');
+        downloadBtn.className = 'queue-item-export teach-back-download';
+        downloadBtn.href = '/api/queue/' + encodeURIComponent(videoId) + '/teach-back/download';
+        downloadBtn.innerHTML = '<span aria-hidden="true">⬇</span> 下載 Teach Back';
+        block.appendChild(downloadBtn);
 
         section.appendChild(block);
         return section;

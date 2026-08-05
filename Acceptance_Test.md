@@ -319,9 +319,26 @@ Task 3 初版（Learning Blueprint MVP，單一線性文字樣板）Human Test �
 
 Gemini 呼叫失敗的 Error Path（`GeminiGenerationError` → HTTP 500）與 Structure Detection 一致性，不屬於本次驗收範圍，已移至 `TODO.md` Product Backlog。
 
+### Task 5 — Teach Back
+
+根據已存在的 Learning Blueprint（不重讀 Transcript），依每一個 Blueprint 學習重點各自產生一組 Teach Back：Explain in Your Own Words（教學提示）、Self Check Checklist（動態產生，內容特定）、Practice Questions（Concept／Scenario／Application 三種）、Reflection（固定 4 題，導向 Next Action）。Preview 為真實 HTML（非 `<pre>`），下載輸出 Markdown。
+
+- [x] 出現「📝 開始 Teach Back」按鈕（僅 Learning Blueprint 已存在時顯示）
+- [x] 點擊後每個 Blueprint 各自顯示四區塊，為排版後的 HTML，非純文字
+- [x] 「⬇ 下載 Teach Back」正常下載 `.md`
+- [x] F5 重新整理直接顯示，不重新呼叫 Gemini
+- [x] 迴歸：Transcript、Study Note、Learning Blueprint、Queue、History、Export 皆不受影響
+
+**Test Date:** 2026-08-05
+**Test Result:** PASS
+
+僅新增 `app/teach_back.py`；修改 `app/gemini_client.py`（新增 Prompt／`generate_teach_back()`）、`app/main.py`（新增 `POST /api/queue/{video_id}/teach-back`、`GET .../teach-back/download`）、`app/static/script.js`、`app/static/style.css`。未修改 Knowledge Structure Engine 既有邏輯（`app/learning_blueprint.py`）、Workflow、Stage Guard、Single Worker、Queue Store 寫入結構、History、Export、Chrome Extension。
+
+Gemini 呼叫失敗的 Error Path，不屬於本次驗收範圍，已在 `TODO.md` Product Backlog。
+
 ### Sprint Result
 
-- [ ] Sprint 7 completed（Task 0、Task 1、Task 2、Task 3 完成；Task 4 實作完成待 Human Test；Task 5～7 待開發）
+- [ ] Sprint 7 completed（Task 0、Task 1、Task 2、Task 3、Task 5 完成；Task 4 實作完成待 Human Test；Task 6～7 待開發）
 
 ---
 

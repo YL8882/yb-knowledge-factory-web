@@ -20,6 +20,7 @@ import knowledge_package
 import learning_blueprint
 import queue_store
 import study_note
+import teach_back
 import transcript as transcript_service
 import youtube
 
@@ -860,6 +861,74 @@ async def generate_learning_blueprint(video_id: str):
         "learning_blueprint": data,
         "file_path": str(output_path),
     }
+
+
+@app.post("/api/queue/{video_id}/teach-back")
+async def generate_teach_back(video_id: str):
+    """Knowledge Structure Engine (Sprint 7, Task 5): Teach Back is the second
+    Output of the Engine (after Learning Blueprint) — generated FROM the
+    already-produced Learning Blueprint JSON, not from the raw Transcript, so
+    it stays consistent with what the user already saw and doesn't re-spend
+    tokens re-reading the transcript. Requires Learning Blueprint to already
+    exist. Same independent, direct-async-handler, cache-first pattern as
+    /learning-blueprint (Task 3) — no Stage Guard involvement.
+    """
+    try:
+        item = queue_store.get_item(video_id)
+    except queue_store.QueueItemNotFoundError:
+        raise HTTPException(status_code=404, detail="項目不存在")
+
+    cached_path = teach_back.find_cached_teach_back(video_id)
+    if cached_path:
+        return {
+            "video_id": video_id,
+            "teach_back": teach_back.load_teach_back(cached_path),
+            "file_path": str(cached_path),
+        }
+
+    blueprint_path = item.get("learning_blueprint_path")
+    if not blueprint_path or not Path(blueprint_path).exists():
+        raise HTTPException(status_code=400, detail="請先建立 Learning Blueprint")
+
+    blueprint_data = learning_blueprint.load_learning_blueprint(Path(blueprint_path))
+    blueprint_items = teach_back.extract_blueprint_items(
+        blueprint_data.get("structure_type", "generic"), blueprint_data.get("content", {})
+    )
+
+    try:
+        data = gemini_client.generate_teach_back(title=item["title"], blueprint_items=blueprint_items)
+    except gemini_client.GeminiConfigError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    except gemini_client.GeminiGenerationError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=error_messages.classify_error(str(exc), stage="studynote"),
+        )
+
+    output_path = teach_back.save_teach_back(video_id=video_id, title=item["title"], data=data)
+
+    # Additive field only — no `status` change, so this never interacts with
+    # _stage_rank() / Stage Guard's forward-only state machine.
+    queue_store.update_item(video_id, teach_back_path=str(output_path))
+
+    return {
+        "video_id": video_id,
+        "teach_back": data,
+        "file_path": str(output_path),
+    }
+
+
+@app.get("/api/queue/{video_id}/teach-back/download")
+async def download_teach_back(video_id: str):
+    md_path = teach_back.find_cached_teach_back_markdown(video_id)
+    if not md_path or not md_path.exists():
+        raise HTTPException(status_code=404, detail="Teach Back 檔案不存在")
+
+    return FileResponse(
+        md_path,
+        media_type="text/markdown",
+        filename=md_path.name,
+    )
 
 
 @app.get("/api/queue/{video_id}/transcript/download")

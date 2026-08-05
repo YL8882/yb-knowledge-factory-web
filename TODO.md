@@ -240,6 +240,19 @@ Sprint 7 後續開發順序重新確認：Task 3 Knowledge Structure Engine → 
 
 Gemini 呼叫失敗的 Error Path、Structure Detection 一致性：不屬於 Task 4 範圍，已移至上方 Product Backlog。
 
+### Task 5 — Teach Back ✅ Completed
+
+- [x] 依已存在的 Learning Blueprint（不重讀 Transcript）逐一產生 Teach Back：`extract_blueprint_items()` 依 7 種 structure_type 各自的資料形狀，統一轉成 `{title, detail}` 學習重點清單餵給 Gemini
+- [x] 每個學習重點各自產生 Explain in Your Own Words（教學提示）、Self Check Checklist（動態、內容特定）、Practice Questions（Concept／Scenario／Application）——皆由 Gemini 依內容客製生成，非固定模板
+- [x] Reflection 為固定 4 題模板（非 Gemini 生成，見 `teach_back.py` `_REFLECTION_QUESTIONS`），導向 Next Action
+- [x] Preview 為真實 HTML（`<h4>`／checkbox `<input>`／`<dl>`），非 `<pre>` 純文字
+- [x] 下載輸出 Markdown（`.md`，與 `.json` 一併持久化，`.md` 直接透過 `FileResponse` 下載，比照 Transcript／Study Note 既有模式）
+- [x] F5 直接讀取既有 Teach Back，不重新呼叫 Gemini（沿用 Task 3 建立的 cache-first 模式）
+
+新增 `app/teach_back.py`；修改 `app/gemini_client.py`、`app/main.py`（`POST /api/queue/{video_id}/teach-back`、`GET .../teach-back/download`）、`app/static/script.js`、`app/static/style.css`。未修改 `app/learning_blueprint.py`、Workflow、Stage Guard、Single Worker、Queue Store 寫入結構、History、Export、Chrome Extension。
+
+**過程記錄：** Assistant 以真實 API 呼叫端到端驗證（非模擬）：確認依 Learning Blueprint 的學習重點數量產生對應數量的 Teach Back（例：4 個 `cases` → 4 組 Teach Back）、每組內容具體對應該學習重點而非通用模板、`.md` 下載檔案結構與編碼正確、Learning Blueprint 不存在時正確回傳 400。使用者於瀏覽器完成 Human Test 後回報 PASS，詳見 `Acceptance_Test.md` Sprint 7 Task 5。
+
 ---
 
 ## Acceptance

@@ -152,6 +152,34 @@ structure_type = "generic"：
 {"structure_type": "generic", "structure_label": "重點條列", "content": {"points": ["...", "..."]}}
 """
 
+_TEACH_BACK_SYSTEM_INSTRUCTION = """\
+你是 TeachBack AI，任務是幫助學習者驗證「我是否真的學會了」——不是整理內容，\
+是設計主動回想（Active Recall）與教學練習。
+
+使用者會拿到一份「Learning Blueprint」，內容已拆解成數個學習重點（Blueprint Items）。\
+你要針對每一個學習重點，各自產生一組教學回顧練習。
+
+# 規則
+
+- 使用台灣繁體中文，語氣正式、清楚。
+- 只根據提供的學習重點內容設計，不得杜撰、不得補充未提及的資訊。
+- 你收到幾個學習重點，就要輸出幾組結果，順序需一致，不能合併或省略。
+- teaching_prompt：不是「請解釋這支影片」這種空泛問題，語氣需符合以下精神——\
+提醒使用者不要背答案，要求用自己的話向完全沒接觸過的人解釋，並加入「如果對方聽不懂，\
+你會如何換一種方式說明？」這類追問，具體內容須對應這個學習重點的主題。
+- checklist：3～5 條，必須是這個學習重點「內容特定」的具體檢核項目（例如提到 Docker，\
+就該是「我知道 Docker 為什麼存在」這種具體項目），不可以是「我知道用途／流程／案例」\
+這種放諸四海皆準的空泛項目。
+- practice_questions 需包含三種類型，且都要基於這個學習重點的實際內容：
+  - concept：確認是否理解概念本身
+  - scenario：放入一個具體情境（例如「如果 XXX 壞掉／消失，會發生什麼事？」）
+  - application：促使使用者思考應用或改善（例如「如果重新設計，你會如何改善？」）
+
+# 輸出格式（純 JSON，不要用 Markdown code fence，不要輸出 JSON 以外的文字）
+
+{"items": [{"title": "...", "teaching_prompt": "...", "checklist": ["...", "...", "..."], "practice_questions": {"concept": "...", "scenario": "...", "application": "..."}}]}
+"""
+
 _client: genai.Client | None = None
 
 
@@ -266,6 +294,54 @@ def generate_learning_blueprint(title: str, url: str, transcript_text: str) -> d
 
     if "structure_type" not in data or "content" not in data:
         raise GeminiGenerationError("Gemini 回傳的 JSON 缺少必要欄位（structure_type／content）")
+
+    return data
+
+
+def generate_teach_back(title: str, blueprint_items: list[dict]) -> dict:
+    """Input is the already-extracted Learning Blueprint items (see
+    teach_back.extract_blueprint_items), not the raw Transcript — Teach Back
+    is generated FROM the Learning Blueprint, not independently from it, per
+    the Knowledge Structure Engine v1.0 Engine/Output relationship.
+    """
+    client = _get_client()
+
+    items_text = "\n".join(
+        f"{index}. {item['title']}" + (f"：{item['detail']}" if item.get("detail") else "")
+        for index, item in enumerate(blueprint_items, start=1)
+    )
+
+    prompt = (
+        f"影片標題：{title}\n\n"
+        f"Learning Blueprint 共有 {len(blueprint_items)} 個學習重點：\n"
+        f"{items_text}\n\n"
+        "請針對以上每一個學習重點，依序各自產生一組 Teach Back。"
+    )
+
+    try:
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=_TEACH_BACK_SYSTEM_INSTRUCTION,
+                response_mime_type="application/json",
+                temperature=0,
+            ),
+        )
+    except Exception as exc:
+        raise GeminiGenerationError(str(exc)) from exc
+
+    text = getattr(response, "text", None)
+    if not text:
+        raise GeminiGenerationError("Gemini 未回傳有效內容")
+
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise GeminiGenerationError(f"Gemini 回傳的內容不是有效 JSON：{exc}") from exc
+
+    if "items" not in data:
+        raise GeminiGenerationError("Gemini 回傳的 JSON 缺少必要欄位（items）")
 
     return data
 
