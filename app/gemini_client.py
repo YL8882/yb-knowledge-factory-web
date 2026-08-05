@@ -1,3 +1,4 @@
+import json
 import os
 
 from google import genai
@@ -91,6 +92,66 @@ _KNOWLEDGE_OUTLINE_SYSTEM_INSTRUCTION = """\
 與其他部分的關係，簡短說明）
 """
 
+_LEARNING_BLUEPRINT_SYSTEM_INSTRUCTION = """\
+你是 KnowledgeStructureEngine AI，任務分兩步驟：
+1. Structure Detection：判斷這支影片最適合哪一種知識結構
+2. Knowledge Extraction：依判斷出的結構，抽取對應欄位的內容
+
+目標：幫助學習者在 2 分鐘內建立這支影片的知識架構（Mental Model），\
+30 秒內能說出影片的主要架構、理解內容之間的關係、用自己的話重建約 70% 的內容。
+
+# 規則
+
+- 使用台灣繁體中文，語氣正式、清楚。
+- 只根據逐字稿內容整理，不得杜撰、不得補充逐字稿未提及的資訊。
+- 忽略開場寒暄、訂閱提醒、廣告、與主題無關的閒聊。
+- 只能從下列 8 個 structure_type 中選出「最主導」的單一結構，不要混用：
+  flow／cause_effect／classification／decision／comparison／timeline／problem_solution／generic
+- 只有在內容完全無法歸類到前 7 種時，才使用 generic。
+- content 欄位必須符合所選 structure_type 對應的資料形狀（見下方範例）——\
+不可以無論選哪個 structure_type，都輸出同樣格式的內容，這是最重要的規則。
+- 陣列項目數量建議 3～5 個，不要超過 7 個。
+
+# structure_type 判斷依據
+
+- flow：內容在說「怎麼做一件事」的步驟、SOP、操作流程
+- cause_effect：內容在說「為什麼會這樣、什麼導致什麼」
+- classification：內容在條列「有哪幾種／哪幾類」
+- decision：內容在「幫使用者做選擇」，有條件與對應選項
+- comparison：內容在「比較兩個以上對象」
+- timeline：內容「按時間先後」鋪陳
+- problem_solution：內容「先講問題、再講解法」
+- generic：以上皆不適用時的後備
+
+# 輸出格式（純 JSON，不要用 Markdown code fence，不要輸出 JSON 以外的文字）
+
+依 structure_type 輸出對應的 content 形狀：
+
+structure_type = "flow"：
+{"structure_type": "flow", "structure_label": "流程", "content": {"steps": [{"step": 1, "action": "...", "purpose": "..."}]}}
+
+structure_type = "cause_effect"：
+{"structure_type": "cause_effect", "structure_label": "因果", "content": {"chain": [{"cause": "...", "effect": "...", "because": "..."}]}}
+
+structure_type = "classification"：
+{"structure_type": "classification", "structure_label": "分類", "content": {"categories": [{"category": "...", "items": ["...", "..."], "trait": "..."}]}}
+
+structure_type = "decision"：
+{"structure_type": "decision", "structure_label": "決策", "content": {"condition": "...", "options": [{"choice": "...", "outcome": "..."}]}}
+
+structure_type = "comparison"：
+{"structure_type": "comparison", "structure_label": "比較", "content": {"option_a_label": "...", "option_b_label": "...", "dimensions": [{"dimension": "...", "option_a": "...", "option_b": "..."}]}}
+
+structure_type = "timeline"：
+{"structure_type": "timeline", "structure_label": "時間軸", "content": {"events": [{"time": "...", "event": "...", "significance": "..."}]}}
+
+structure_type = "problem_solution"：
+{"structure_type": "problem_solution", "structure_label": "問題→解法", "content": {"cases": [{"problem": "...", "root_cause": "...", "solution": "...", "result": "..."}]}}
+
+structure_type = "generic"：
+{"structure_type": "generic", "structure_label": "重點條列", "content": {"points": ["...", "..."]}}
+"""
+
 _client: genai.Client | None = None
 
 
@@ -168,6 +229,45 @@ def generate_knowledge_outline(title: str, url: str, transcript_text: str) -> st
         raise GeminiGenerationError("Gemini 未回傳有效內容")
 
     return text.strip()
+
+
+def generate_learning_blueprint(title: str, url: str, transcript_text: str) -> dict:
+    client = _get_client()
+
+    prompt = (
+        f"影片標題：{title}\n"
+        f"影片網址：{url}\n\n"
+        "Transcript：\n"
+        f"{transcript_text}\n\n"
+        "請根據以上 Transcript，判斷 structure_type 並輸出對應的 Knowledge JSON。"
+    )
+
+    try:
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=_LEARNING_BLUEPRINT_SYSTEM_INSTRUCTION,
+                response_mime_type="application/json",
+                temperature=0,
+            ),
+        )
+    except Exception as exc:
+        raise GeminiGenerationError(str(exc)) from exc
+
+    text = getattr(response, "text", None)
+    if not text:
+        raise GeminiGenerationError("Gemini 未回傳有效內容")
+
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise GeminiGenerationError(f"Gemini 回傳的內容不是有效 JSON：{exc}") from exc
+
+    if "structure_type" not in data or "content" not in data:
+        raise GeminiGenerationError("Gemini 回傳的 JSON 缺少必要欄位（structure_type／content）")
+
+    return data
 
 
 def generate_quick_summary(title: str, url: str, transcript_text: str) -> str:

@@ -269,9 +269,40 @@ Rapid Learning 區塊重新設計：預設只顯示 One Sentence ＋ 精簡重�
 
 **過程記錄：** 人工驗收一次通過。精簡重點是純前端從既有 Knowledge Outline 文字擷取一級清單項目（`extractTopPoints()`），非重新呼叫 Gemini；展開／收合為純 CSS class 切換，不觸發任何 API 請求。
 
+### Design Freeze — Knowledge Structure Engine v1.0
+
+Task 3 初版（Learning Blueprint MVP，單一線性文字樣板）Human Test 過程中，使用者判定產出內容本質上仍是 Knowledge Outline，未達成 Learning Blueprint 的產品目標，觸發重新設計。純文件定稿，未修改程式。
+
+- [x] 產品定位、Taxonomy、Structure／Renderer 分離、Knowledge JSON Layer、Prompt Strategy、Human Test／KPI 定案（見 `Knowledge_Structure_Engine_v1.0.md`）
+- [x] `Why.md` 同步更新（Vision、四層能力對照表、Product Principles 四句、Mission 穩定性聲明）
+
+**Test Date:** 2026-08-05
+**Test Result:** PASS（文件審閱確認，非程式驗收）
+
+### Task 3 — Knowledge Structure Engine
+
+依 Knowledge Structure Engine v1.0 重做：Gemini 呼叫改為兩步驟（Structure Detection → Knowledge Extraction），輸出結構化 Knowledge JSON（`structure_type` + 對應 `content` 欄位），取代初版單一線性文字樣板。本次僅完成 Engine（判斷＋抽取＋回傳 JSON＋最小可視化 JSON 顯示），依結構分派的 Renderer 留給 Task 4。
+
+- [x] 對多支不同類型影片觸發「🗺️ 建立知識架構」，`structure_type` 判斷合理（實測涵蓋 flow／problem_solution／classification 等）
+- [x] `content` 欄位符合對應 structure_type 的資料形狀，不是統一格式（例如 problem_solution 產生 `cases`，flow 產生 `steps`）
+- [x] 未退化成一般條列摘要
+- [x] 重新整理頁面，已產生項目直接顯示，不重複呼叫 Gemini
+- [x] 迴歸：Transcript、Study Note、既有「🧠 開始快速學習」、Queue、History、Export 皆不受影響
+
+**Test Date:** 2026-08-05
+**Test Result:** PASS
+
+**過程記錄：** Human Test 過程中經歷數輪排查：(1) 一支影片點擊按鈕後「沒有任何反應」，經 Network 確認 Request 停在 Pending，最終定位為 Assistant 先前為驗證 Structure Detection 一致性、短時間內連續呼叫約 15 次 Gemini API 做壓力測試，佔用了單一 Worker 的處理時間，並非程式邏輯錯誤；(2) 同一輪中回報過一次 500 Internal Server Error，後續重測未再重現，確認為同一批壓力測試期間的暫時性錯誤，非常態問題。
+
+**已知限制（不阻擋本次驗收，經使用者確認延後處理）：**
+- Structure Detection 一致性未達完全穩定：同一支內容特徵模糊的影片，重複生成可能得到不同 `structure_type`（已加入 `temperature=0` 改善，但未完全消除）。是否需要進一步處理（例如加強 Prompt 判斷規則），待後續獨立 Task 決定。
+- Gemini 呼叫失敗時的 Error Response 處理未強化，依使用者指示不併入本次 Task，若 Human Test 發現不足，將另立獨立 Bug Fix Task。
+
+僅修改 `app/gemini_client.py`（Learning Blueprint 系統指令與 `generate_learning_blueprint()` 改為兩步驟＋JSON 輸出＋`temperature=0`）、`app/learning_blueprint.py`（存檔格式改為 `.json`）、`app/main.py`（`learning-blueprint` 端點回傳結構化物件）、`app/static/script.js`（`buildLearningBlueprintSection()` 改為 JSON 最小顯示）。未修改 Workflow、Stage Guard、Single Worker、Transcript／Study Note 生成邏輯、`queue_store.py` 寫入結構、History、Export、Chrome Extension。
+
 ### Sprint Result
 
-- [ ] Sprint 7 completed（Task 0、Task 1、Task 2 完成，待後續 Task 指示）
+- [ ] Sprint 7 completed（Task 0、Task 1、Task 2、Task 3 完成；Task 4～7 待開發）
 
 ---
 

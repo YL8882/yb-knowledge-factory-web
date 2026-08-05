@@ -42,6 +42,16 @@ document.addEventListener('DOMContentLoaded', function() {
     // re-render triggered by an unrelated action elsewhere in the list.
     const expandedKnowledgeOutlineCards = new Set();
 
+    // Learning Blueprint Engine (Sprint 7, Task 3): raw Learning Blueprint
+    // text keyed by video_id. Independent of knowledgeOutlineCache above —
+    // this is a separate, additive artifact, not a replacement (that switch
+    // is Task 4's job). Same cache-across-renders reasoning as Task 1.
+    const learningBlueprintCache = new Map();
+
+    // Guards fetchLearningBlueprintIntoCache() the same way
+    // knowledgeOutlineFetchInFlight guards its Knowledge Outline counterpart.
+    const learningBlueprintFetchInFlight = new Set();
+
     // Remembered download folder (File System Access API, Chrome/Edge only). The handle
     // itself is persisted in IndexedDB so it survives a page reload; autoDownload() writes
     // straight into it once permission is confirmed, instead of prompting on every download.
@@ -669,6 +679,28 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
 
+            // Learning Blueprint Engine (Sprint 7, Task 3): independent
+            // additive button, same hasStudyNote gate as Rapid Learning above
+            // but its own trigger — doesn't require Knowledge Outline to
+            // already exist. MVP display only (raw text block); UI/reading
+            // experience polish is Task 4's job.
+            if (hasStudyNote) {
+                if (learningBlueprintCache.has(item.video_id)) {
+                    li.appendChild(buildLearningBlueprintSection(item.video_id, learningBlueprintCache.get(item.video_id)));
+                } else if (item.learning_blueprint_path) {
+                    fetchLearningBlueprintIntoCache(item.video_id);
+                } else {
+                    const blueprintBtn = document.createElement('button');
+                    blueprintBtn.className = 'queue-item-rapid-learning';
+                    blueprintBtn.type = 'button';
+                    blueprintBtn.innerHTML = '<span aria-hidden="true">🗺️</span> 建立知識架構';
+                    blueprintBtn.addEventListener('click', function() {
+                        startLearningBlueprint(item.video_id, blueprintBtn);
+                    });
+                    li.appendChild(blueprintBtn);
+                }
+            }
+
             // Knowledge Package Export (Sprint 5, Task 1): manual, separate from the
             // auto-download of the individual Transcript.md / Study_Note.md files
             // below — zips both into one <Video Title>/ package on click. Gated on
@@ -809,6 +841,83 @@ document.addEventListener('DOMContentLoaded', function() {
         } finally {
             knowledgeOutlineFetchInFlight.delete(videoId);
         }
+    }
+
+    // Learning Blueprint Engine (Sprint 7, Task 3): manual, opt-in trigger —
+    // mirrors startRapidLearning()'s shape but hits the separate
+    // /learning-blueprint endpoint and its own cache.
+    async function startLearningBlueprint(videoId, button) {
+        button.disabled = true;
+        try {
+            const response = await fetch(
+                '/api/queue/' + encodeURIComponent(videoId) + '/learning-blueprint',
+                { method: 'POST' }
+            );
+            const data = await response.json();
+            if (!response.ok) {
+                showStatus(data.detail || '產生 Learning Blueprint 失敗', 'error');
+                button.disabled = false;
+                return;
+            }
+            learningBlueprintCache.set(videoId, data.learning_blueprint);
+            await loadQueue();
+        } catch (error) {
+            showStatus('網路連線失敗', 'error');
+            button.disabled = false;
+        }
+    }
+
+    // Revisiting an item whose Learning Blueprint was already generated in an
+    // earlier session — same reasoning as fetchKnowledgeOutlineIntoCache().
+    async function fetchLearningBlueprintIntoCache(videoId) {
+        if (learningBlueprintFetchInFlight.has(videoId)) {
+            return;
+        }
+        learningBlueprintFetchInFlight.add(videoId);
+        try {
+            const response = await fetch(
+                '/api/queue/' + encodeURIComponent(videoId) + '/learning-blueprint',
+                { method: 'POST' }
+            );
+            if (!response.ok) {
+                return;
+            }
+            const data = await response.json();
+            learningBlueprintCache.set(videoId, data.learning_blueprint);
+            await loadQueue();
+        } catch (error) {
+            // Silent — next poll tick (or manual refresh) retries naturally.
+        } finally {
+            learningBlueprintFetchInFlight.delete(videoId);
+        }
+    }
+
+    // Knowledge Structure Engine MVP display (Sprint 7, Task 3): `data` is now
+    // the structured Knowledge JSON object (structure_type/structure_label/
+    // content), not raw text — pretty-printed as-is so the Human Test can
+    // visually confirm different structure_types produce different content
+    // shapes. Reuses the existing rapid-learning-* classes, no new CSS.
+    // Per-structure_type visual rendering (Tree/Flow/Timeline/Table/...) is
+    // Task 4's job, kept out of this task to stay single-purpose.
+    function buildLearningBlueprintSection(videoId, data) {
+        const section = document.createElement('div');
+        section.className = 'rapid-learning-section';
+
+        const block = document.createElement('div');
+        block.className = 'rapid-learning-block';
+        const label = data.structure_label || data.structure_type || 'Learning Blueprint';
+        block.innerHTML =
+            '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>' +
+            '<div class="rapid-learning-heading">🗺️ Learning Blueprint（' + label + '）</div>' +
+            '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>';
+
+        const contentEl = document.createElement('pre');
+        contentEl.className = 'rapid-learning-content';
+        contentEl.textContent = JSON.stringify(data, null, 2);
+        block.appendChild(contentEl);
+
+        section.appendChild(block);
+        return section;
     }
 
     // Quick Learn Layer (Sprint 7, Task 2): pulls up to `maxCount` top-level

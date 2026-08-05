@@ -176,6 +176,58 @@ Learn Package Specification v2.0（見 `Learn_Package_Specification_v2.0.md`）�
 
 僅修改 `app/static/script.js`（新增 `extractTopPoints()`，重寫 `buildRapidLearningSection()`）、`app/static/style.css`。未修改 Prompt、Gemini、`knowledge_outline.py`、`study_note.py`、Queue Store、History、Export、Chrome Extension。
 
+### Design Freeze — Learning Model v1.0 ✅ Completed
+
+Task 3（Learning Blueprint Engine）開發前的產品設計定稿，純討論，未修改任何程式、Prompt、UI、Repository。
+
+- [x] 三個 Learning Phase 正式命名定案：雙層命名——使用者面「值得學／看懂了／記住了」，內部學術對應「Orientation／Comprehension／Retention」（取代原本容易被誤解為難度分級的 Level 1/2/3）
+- [x] 確認 Knowledge Outline 正式退役，由 Learning Blueprint 取代；原通用清單邏輯保留為無法明確分類內容時的預設／後備結構
+- [x] Learning Blueprint 正式定義：目的是幫助使用者建立心智模型，非整理知識；定義 7 種候選結構（流程／因果／分類／決策／比較／時間軸／問題→解法），每支影片判斷單一主要結構
+- [x] 確認資料流程方向：各 Phase 各自生成、按需觸發、以上下文串接維持一致性（非單一資料多種呈現一次生成）
+- [x] 定義三個 Phase 各自的目的／輸入／輸出／完成條件／Human Test
+- [x] 提出產品 KPI（Teach Back 完成率為核心指標）與終局差異化定位
+
+Sprint 7 Task 3 起依此 Learning Model v1.0 展開實作。
+
+### Task 3（初版）— Learning Blueprint MVP：已由 Knowledge Structure Engine v1.0 取代
+
+初版採單一線性文字樣板（`[錨點]→細節`），Human Test 過程中確認技術可正常運作，但內容本質上與 Knowledge Outline 難以區分，不符合 Learning Blueprint 的產品目標。未正式驗收，由下方 Design Freeze 重新定義範圍後取代；已產生的測試資料（`outputs/learning_blueprints/`）屬於除錯殘留，將於 Task 3 重做時一併清理。
+
+**過程記錄：** Human Test 過程中經歷多輪「按鈕未顯示」的 RCA，最終定位兩個獨立原因：(1) 部分測試分頁的瀏覽器分頁未真正重新載入新版 `script.js`（確認方式：`document.querySelectorAll('.queue-item-rapid-learning').length` 應為 97，實際部分分頁僅 44，重新整理該分頁後恢復正常）；(2) Assistant 曾誤用 `typeof functionName` 在 Console 全域 scope 檢查函式是否載入，但 `script.js` 全部程式碼皆包在 `document.addEventListener('DOMContentLoaded', function() {...})` 的 closure 內，任何函式（含新舊版本）在全域 scope 查詢都會是 `undefined`，此診斷方式本身有誤，不能用來判斷版本是否載入，已於對話中修正並改用 DOM 實際渲染結果驗證。
+
+### Design Freeze — Knowledge Structure Engine v1.0 ✅ Completed
+
+Task 3 初版 Human Test 過程中，使用者判定產出內容本質上仍是 Knowledge Outline，未達成 Learning Blueprint 的產品目標，觸發重新設計。純討論與文件定稿，未修改程式、Prompt、UI。
+
+- [x] 產品定位定案：YB Learn＝Knowledge Structure Engine，非摘要／Study Note／Mind Map 工具；Study Note／Knowledge Structure Engine／Learning Blueprint／Teach Back 四層能力各自回答不同問題
+- [x] 7 種 Core Structure 重新定義為「可擴充清單」而非固定七選一，並為每種定義資料形狀（非僅結構名稱）
+- [x] Structure 與 Renderer 正式分離：Structure＝知識語意形狀，Renderer＝畫面呈現，兩者透過 Knowledge JSON 解耦
+- [x] 新增 Knowledge JSON Layer：Video → Knowledge Extraction → Knowledge Structure → Knowledge JSON → Renderer → Learning Blueprint
+- [x] Prompt Strategy 改為兩步驟：Structure Detection → Knowledge Extraction，輸出結構化 JSON，取代原本單一線性文字樣板
+- [x] Learning Blueprint 定位修正：Learning Blueprint 不是 Engine，是 Engine 的第一個 Output；Teach Back／Quiz／Action List／Review／Skill Tree 未來共用同一個 Engine
+- [x] Human Test／KPI 重新定義：30 秒內能否說出架構、理解關係、複述 70% 內容
+- [x] 同步更新 `Why.md`：新增 Vision（Learn Faster / Understand Deeper / Remember Longer）、擴充「我們真正是什麼」為四層能力對照表、Product Principles 正式定名為四句（Structure Knowledge／Make It Stick／Reduce Friction／Start Learning）、新增「Mission 的穩定性」與產品決策原則
+- [x] 新增 `Knowledge_Structure_Engine_v1.0.md` 作為正式架構規格文件（status: Design Freeze — Approved）
+
+文件：`Knowledge_Structure_Engine_v1.0.md`、`Why.md`
+
+**Product Position／Mission／Vision／Learning Model／Product Principles 自本次起凍結，除非規劃 v2.0，不再修改。**
+
+Sprint 7 後續開發順序重新確認：Task 3 Knowledge Structure Engine → Task 4 Learning Blueprint Renderer → Task 5 Teach Back → Task 6 Action List → Task 7 Review。
+
+### Task 3 — Knowledge Structure Engine ✅ Completed
+
+- [x] Gemini 呼叫改為兩步驟（Structure Detection → Knowledge Extraction），輸出結構化 Knowledge JSON（`structure_type` + 對應 `content` 欄位），取代初版單一線性文字樣板
+- [x] 存檔格式改為 `.json`（`outputs/learning_blueprints/LB_<title>_<video_id>.json`）
+- [x] `temperature=0`：改善（非完全消除）Structure Detection 一致性
+- [x] Queue Card 最小可視化：pretty-printed JSON，證明不同 `structure_type` 產生不同 `content` 形狀；依結構分派的正式 Renderer 留給 Task 4
+
+僅修改 `app/gemini_client.py`、`app/learning_blueprint.py`、`app/main.py`、`app/static/script.js`。未修改 Workflow、Stage Guard、Single Worker、Transcript／Study Note 生成邏輯、`queue_store.py` 寫入結構、History、Export、Chrome Extension。
+
+**過程記錄：** 詳見 `Acceptance_Test.md` Sprint 7 Task 3。Human Test 期間排查出的「Pending／500」現象最終定位為 Assistant 自行做一致性驗證時短時間內連續呼叫約 15 次 Gemini API 造成，非程式錯誤。
+
+**已知限制（延後處理，經使用者確認不阻擋本次驗收）：** Structure Detection 一致性未達完全穩定；Gemini 呼叫失敗的 Error Response 處理未強化——兩者皆待後續獨立 Task 決定是否處理，不併入 Task 3。
+
 ---
 
 ## Acceptance

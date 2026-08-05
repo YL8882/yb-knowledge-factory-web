@@ -66,6 +66,22 @@ purpose: Track added, changed, fixed, and removed functionality per release.
 ### Changed
 - Queue 頁面「📦 下載知識包」按鈕改依磁碟實際檔案顯示，不再只信任 `queue_store` 的 path 欄位
 - `GET /api/queue/export-all` 候選判斷改用磁碟實際檔案，缺檔項目自動排除、不再讓整批匯出中止（語意比照 `/api/history/export-all`）
+- Learning Model v1.0 Design Freeze 完成：Learning Phase 正式命名定案（值得學／看懂了／記住了，內部對應 Orientation／Comprehension／Retention）、確認 Knowledge Outline 未來由 Learning Blueprint 取代、定義 Learning Blueprint 7 種候選結構與各 Phase 的目的／輸入／輸出／完成條件；純產品設計，未涉及程式異動
 
 ### Fixed
 - Knowledge Package ZIP（單支與批次匯出）標題過長時，Windows Explorer 內建解壓縮可能因路徑超過 MAX_PATH（260 字元）而失敗；`knowledge_package._sanitize_filename()` 新增 50 字長度截斷（`video_id` 一律截斷後才接上，確保唯一性不受影響）
+
+## 2026-08-05
+
+### Added
+- 新增 `Knowledge_Structure_Engine_v1.0.md`：Knowledge Structure Engine 正式架構規格文件（Design Freeze — Approved），定義 Engine 定位、7 種 Core Structure Taxonomy、Structure／Renderer 分離、Knowledge JSON Layer、兩步驟 Prompt Strategy、Human Test／KPI
+- `Why.md` 新增 Vision（Learn Faster / Understand Deeper / Remember Longer）、Product Principles 正式定名為四句（Structure Knowledge／Make It Stick／Reduce Friction／Start Learning）、「Mission 的穩定性」段落與產品決策原則
+
+### Changed
+- `POST /api/queue/{video_id}/learning-blueprint`：Gemini 呼叫改為兩步驟（Structure Detection → Knowledge Extraction），輸出結構化 Knowledge JSON（`structure_type` + 對應 `content` 欄位，`response_mime_type="application/json"`、`temperature=0`），取代初版單一線性文字樣板；存檔格式改為 `.json`
+- Queue Card Learning Blueprint 顯示區塊改為 pretty-printed JSON（最小可視化，證明不同 `structure_type` 產生不同 `content` 形狀）；依結構分派的正式 Renderer 留待 Sprint 7 Task 4
+- `Why.md`「我們真正是什麼」擴充為四層能力對照表（Study Note／Knowledge Structure Engine／Learning Blueprint／Teach Back）
+
+### Known Limitations
+- Structure Detection 一致性未達完全穩定：同一支內容特徵模糊的影片，重複生成可能得到不同 `structure_type`（已加 `temperature=0` 改善，未完全消除）
+- Gemini 呼叫失敗時的 Error Response 處理未強化，待後續獨立 Bug Fix Task

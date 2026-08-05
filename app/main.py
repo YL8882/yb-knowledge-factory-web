@@ -17,6 +17,7 @@ import gemini_client
 import history_store
 import knowledge_outline
 import knowledge_package
+import learning_blueprint
 import queue_store
 import study_note
 import transcript as transcript_service
@@ -797,6 +798,66 @@ async def generate_knowledge_outline(video_id: str):
     return {
         "video_id": video_id,
         "knowledge_outline": body,
+        "file_path": str(output_path),
+    }
+
+
+@app.post("/api/queue/{video_id}/learning-blueprint")
+async def generate_learning_blueprint(video_id: str):
+    """Knowledge Structure Engine (Sprint 7, Task 3): manual trigger for the
+    Comprehension-phase artifact. Two-step Gemini call (Structure Detection +
+    Knowledge Extraction, see Knowledge_Structure_Engine_v1.0.md) returns a
+    structured Knowledge JSON object — not free-form text — so the future
+    Renderer (Task 4) can dispatch on `structure_type` instead of parsing
+    prose. Independent of the existing One Sentence + Knowledge Outline flow
+    (Task 1): reads the cached Transcript directly, same as knowledge_outline
+    does, and follows the same direct-async-handler pattern (not routed
+    through _pipeline_queue / the single worker thread — no `status` change,
+    no Stage Guard involvement).
+    """
+    try:
+        item = queue_store.get_item(video_id)
+    except queue_store.QueueItemNotFoundError:
+        raise HTTPException(status_code=404, detail="項目不存在")
+
+    cached_path = learning_blueprint.find_cached_learning_blueprint(video_id)
+    if cached_path:
+        return {
+            "video_id": video_id,
+            "learning_blueprint": learning_blueprint.load_learning_blueprint(cached_path),
+            "file_path": str(cached_path),
+        }
+
+    transcript_path = item.get("transcript_path")
+    if not transcript_path or not Path(transcript_path).exists():
+        raise HTTPException(status_code=400, detail="請先產生 Transcript")
+
+    transcript_content = Path(transcript_path).read_text(encoding="utf-8")
+    transcript_body = study_note.extract_transcript_body(transcript_content)
+
+    try:
+        data = gemini_client.generate_learning_blueprint(
+            title=item["title"], url=item["url"], transcript_text=transcript_body
+        )
+    except gemini_client.GeminiConfigError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    except gemini_client.GeminiGenerationError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=error_messages.classify_error(str(exc), stage="studynote"),
+        )
+
+    output_path = learning_blueprint.save_learning_blueprint(
+        video_id=video_id, title=item["title"], data=data
+    )
+
+    # Additive field only — no `status` change, so this never interacts with
+    # _stage_rank() / Stage Guard's forward-only state machine.
+    queue_store.update_item(video_id, learning_blueprint_path=str(output_path))
+
+    return {
+        "video_id": video_id,
+        "learning_blueprint": data,
         "file_path": str(output_path),
     }
 
