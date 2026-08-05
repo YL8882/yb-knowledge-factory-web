@@ -111,6 +111,42 @@ Learning Blueprint（呈現結果）
 
 ---
 
+## 7. Persistence — Learning Blueprint 是永久知識資產（Architecture Decision，2026-08-05）
+
+Learning Blueprint 定位為 **Persistent Knowledge Asset**，不是暫存資料。完整生命週期：
+
+```
+YouTube
+  ↓
+Transcript
+  ↓
+Study Note
+  ↓
+Learning Blueprint.json
+  ↓
+Knowledge Package
+  ↓
+Renderer（Flow／Timeline／Decision／Comparison／...）
+```
+
+**設計原則：**
+1. Learning Blueprint 第一次建立時才呼叫 Gemini
+2. 產生完成後，保存為 `learning_blueprint.json`
+3. 之後任何情境——F5 重新整理、重新開啟 Workspace、Queue、History、Export——都直接讀取既有 `learning_blueprint.json`
+4. Renderer 只負責呈現，不重新產生內容
+5. 除非使用者主動按「重新建立知識架構（Regenerate）」，或未來修改 Prompt Version，否則永遠不重新呼叫 Gemini
+6. 目標是知識重用（Knowledge Reuse），不是重複生成（Regeneration）——AI 只生成一次，之後都是知識的重複利用，不是重複消耗 Token（對應 `Why.md` Product Principles 的 `Reduce Friction`）
+
+**現況（Task 3 已實作，符合原則 1～4）：** `find_cached_learning_blueprint()` 在磁碟找到既有 `.json` 即直接回傳，不觸發 Gemini；F5 重新整理、Queue 重新載入皆走此路徑（見 Task 3／4 Human Test 記錄）。
+
+**尚未實作（原則 5，待後續 Task 排入）：**
+- 目前沒有「重新建立知識架構（Regenerate）」按鈕——若要重新生成，唯一方式是手動刪除磁碟上的 `.json` 檔案，不是使用者可操作的正式功能
+- 目前 JSON 沒有 Prompt Version 欄位，無法追蹤某份 Learning Blueprint 是用哪個版本的 Prompt 產生的，未來若修改 Prompt，既有快取會被視為仍然有效而永久沿用，不會自動失效
+
+這兩項不阻擋 Task 4，留待後續獨立 Task 決定排入時機。
+
+---
+
 ## 與既有文件的關係
 
 - **`Why.md`**：Mission／Vision／Product Principles 的來源，本文件的 Engine 定位（第 1 節）直接對應 Why.md「我們真正是什麼」的四層能力對照表。

@@ -82,6 +82,8 @@ purpose: Track added, changed, fixed, and removed functionality per release.
 - Queue Card Learning Blueprint 顯示區塊改為 pretty-printed JSON（最小可視化，證明不同 `structure_type` 產生不同 `content` 形狀）；依結構分派的正式 Renderer 留待 Sprint 7 Task 4
 - `Why.md`「我們真正是什麼」擴充為四層能力對照表（Study Note／Knowledge Structure Engine／Learning Blueprint／Teach Back）
 
+- Queue Card Learning Blueprint 顯示改為依 `structure_type` 分派的排版（Flow 步驟卡片／Comparison 表格／Timeline 時間軸／Decision 決策樹／Classification 分類清單／Cause & Effect 因果箭頭／Problem→Solution 四段卡片／generic 條列），取代 Task 3 的 `JSON.stringify` 顯示
+
 ### Known Limitations
 - Structure Detection 一致性未達完全穩定：同一支內容特徵模糊的影片，重複生成可能得到不同 `structure_type`（已加 `temperature=0` 改善，未完全消除）
 - Gemini 呼叫失敗時的 Error Response 處理未強化，待後續獨立 Bug Fix Task

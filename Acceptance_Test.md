@@ -300,9 +300,28 @@ Task 3 初版（Learning Blueprint MVP，單一線性文字樣板）Human Test �
 
 僅修改 `app/gemini_client.py`（Learning Blueprint 系統指令與 `generate_learning_blueprint()` 改為兩步驟＋JSON 輸出＋`temperature=0`）、`app/learning_blueprint.py`（存檔格式改為 `.json`）、`app/main.py`（`learning-blueprint` 端點回傳結構化物件）、`app/static/script.js`（`buildLearningBlueprintSection()` 改為 JSON 最小顯示）。未修改 Workflow、Stage Guard、Single Worker、Transcript／Study Note 生成邏輯、`queue_store.py` 寫入結構、History、Export、Chrome Extension。
 
+### Task 4 — Learning Blueprint Renderer
+
+純前端 Renderer：`buildLearningBlueprintSection()` 改為依 Task 3 已產出的 `structure_type` 分派到對應排版（步驟卡片／因果箭頭／分類清單／決策樹／比較表格／時間軸／問題解法卡片／條列 fallback），取代原本的 `JSON.stringify` 顯示。不修改 API、Prompt、JSON Schema。
+
+**狀態：實作完成，尚未進行實際 Human Test（等待使用者於瀏覽器操作驗證）。**
+
+- [ ] `structure_type` 對應正確排版顯示（不再是原始 JSON）— Not Tested
+- [ ] `generic`（fallback）正確顯示為條列清單 — Not Tested
+- [ ] Session 內：建立 Learning Blueprint 後直接看到對應排版 — Not Tested
+- [ ] F5 重新整理：已產生項目直接使用既有 Learning Blueprint 顯示對應排版，不重新呼叫 Gemini — Not Tested
+- [ ] 迴歸：Transcript、Study Note、既有「🧠 開始快速學習」、Queue、History、Export 皆不受影響 — Not Tested
+
+**Test Date:** 尚未測試
+**Test Result:** Not Tested
+
+僅修改 `app/static/script.js`（`buildLearningBlueprintSection()` 改為依 `structure_type` 分派、新增 8 個 Renderer 函式）、`app/static/style.css`（新增對應排版樣式）。未修改 `app/gemini_client.py`、`app/learning_blueprint.py`、`app/main.py`、Knowledge JSON Schema、Workflow、Queue、History、Export、Chrome Extension。
+
+Gemini 呼叫失敗的 Error Path（`GeminiGenerationError` → HTTP 500）與 Structure Detection 一致性，不屬於本次驗收範圍，已移至 `TODO.md` Product Backlog。
+
 ### Sprint Result
 
-- [ ] Sprint 7 completed（Task 0、Task 1、Task 2、Task 3 完成；Task 4～7 待開發）
+- [ ] Sprint 7 completed（Task 0、Task 1、Task 2、Task 3 完成；Task 4 實作完成待 Human Test；Task 5～7 待開發）
 
 ---
 

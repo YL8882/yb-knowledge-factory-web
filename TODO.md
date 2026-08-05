@@ -228,6 +228,18 @@ Sprint 7 後續開發順序重新確認：Task 3 Knowledge Structure Engine → 
 
 **已知限制（延後處理，經使用者確認不阻擋本次驗收）：** Structure Detection 一致性未達完全穩定；Gemini 呼叫失敗的 Error Response 處理未強化——兩者皆待後續獨立 Task 決定是否處理，不併入 Task 3。
 
+### Task 4 — Learning Blueprint Renderer（實作完成，待 Human Test）
+
+- `buildLearningBlueprintSection()` 改為依 `structure_type` 分派到對應排版（8 個新增 Render 函式），取代 Task 3 的 `JSON.stringify` 顯示
+- `generic` fallback 顯示為條列清單
+- F5 重新整理沿用 Task 3 已建立的快取機制，Task 4 未變更 fetch／cache 邏輯
+
+僅修改 `app/static/script.js`、`app/static/style.css`。未修改 `app/gemini_client.py`、`app/learning_blueprint.py`、`app/main.py`、Knowledge JSON Schema、Workflow、Queue、History、Export、Chrome Extension。
+
+**Assistant 內部驗證（不等同 Human Test）：** 以 Node 模擬 DOM 環境，用符合 Schema 的合成資料跑過全部 8 種 `structure_type` 的 Render 函式，並用磁碟上真實 Gemini 產出的 `flow`／`problem_solution`／`classification` 樣本比對欄位名稱，確認無例外、無欄位不符——此為程式邏輯層級的自我檢查，不能取代實際瀏覽器操作的 Human Test，詳細驗收狀態見 `Acceptance_Test.md`（目前為 Not Tested，等待使用者實際操作）。
+
+Gemini 呼叫失敗的 Error Path、Structure Detection 一致性：不屬於 Task 4 範圍，已移至上方 Product Backlog。
+
 ---
 
 ## Acceptance
@@ -270,5 +282,6 @@ Future versions only.
 - [ ] iOS App
 - [ ] Known Intermittent Issue 觀察追蹤（Study Note 偶發卡住／下載階段失敗，目前無法穩定重現；若再次出現需以完整 Log 重新開啟 RCA）
 - [ ] `error_messages.classify_error()` stage 判斷精確度改善（避免下載階段錯誤誤標為 Gemini 額度問題）
+- [ ] Learning Blueprint Error Path（`GeminiGenerationError` → HTTP 500）：重試策略、錯誤訊息與 UI 提示、是否自動重試。獨立 Bug Fix Task，不併入 Sprint 7 Task 3／4。發現於 Task 3／4 Human Test 期間（Assistant 短時間內連續呼叫約 15 次 Gemini API 做一致性驗證時觸發過一次，非常態重現）
 
   **需求：** 目前 Extension 僅支援 `https://www.youtube.com/watch?v=`，未支援 `https://www.youtube.com/shorts/`。Shorts 頁面需顯示 YB Learn 按鈕，點擊直接加入 Queue，不需手動貼網址，體驗與一般影片一致。

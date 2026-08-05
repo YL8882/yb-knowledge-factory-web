@@ -706,6 +706,193 @@ main {
     display: none;
 }
 
+/* Knowledge Structure Engine Renderer (Sprint 7, Task 4) — one block per
+   structure_type, sharing the rapid-learning-* color palette (purple accent,
+   #374151 body text) rather than introducing a new visual language. */
+
+.kse-flow-step {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+}
+
+.kse-flow-step-num {
+    flex: 0 0 auto;
+    width: 22px;
+    height: 22px;
+    line-height: 22px;
+    text-align: center;
+    border-radius: 50%;
+    background: #ede9fe;
+    color: #5b21b6;
+    font-weight: 600;
+    font-size: 0.8em;
+}
+
+.kse-flow-step-action {
+    font-weight: 600;
+    color: #374151;
+}
+
+.kse-flow-step-purpose {
+    color: #6b7280;
+    font-size: 0.92em;
+    margin-top: 2px;
+}
+
+.kse-flow-arrow {
+    color: #a78bfa;
+    padding: 2px 0 2px 10px;
+}
+
+.kse-cause-effect .kse-ce-item + .kse-ce-item {
+    margin-top: 10px;
+}
+
+.kse-ce-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.kse-ce-cause {
+    color: #374151;
+}
+
+.kse-ce-arrow {
+    color: #a78bfa;
+    font-weight: 600;
+}
+
+.kse-ce-effect {
+    color: #5b21b6;
+    font-weight: 600;
+}
+
+.kse-ce-because {
+    color: #6b7280;
+    font-size: 0.9em;
+    margin-top: 2px;
+}
+
+.kse-classification .kse-category + .kse-category {
+    margin-top: 10px;
+}
+
+.kse-category-name {
+    font-weight: 600;
+    color: #5b21b6;
+}
+
+.kse-category-items {
+    margin: 4px 0 0;
+    padding-left: 18px;
+    color: #374151;
+}
+
+.kse-decision-condition {
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 6px;
+}
+
+.kse-decision-options {
+    margin: 0;
+    padding-left: 18px;
+}
+
+.kse-decision-choice {
+    font-weight: 600;
+    color: #5b21b6;
+}
+
+.kse-decision-arrow {
+    color: #a78bfa;
+}
+
+.kse-decision-outcome {
+    color: #374151;
+}
+
+.kse-comparison {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92em;
+}
+
+.kse-comparison th,
+.kse-comparison td {
+    border: 1px solid #e6d9fb;
+    padding: 6px 8px;
+    text-align: left;
+    vertical-align: top;
+}
+
+.kse-comparison th {
+    background: #f5f3ff;
+    color: #5b21b6;
+    font-weight: 600;
+}
+
+.kse-timeline-event {
+    display: flex;
+    gap: 10px;
+}
+
+.kse-timeline-event + .kse-timeline-event {
+    margin-top: 10px;
+}
+
+.kse-timeline-time {
+    flex: 0 0 auto;
+    min-width: 64px;
+    color: #5b21b6;
+    font-weight: 600;
+    font-size: 0.88em;
+}
+
+.kse-timeline-event-text {
+    color: #374151;
+}
+
+.kse-timeline-significance {
+    color: #6b7280;
+    font-size: 0.9em;
+    margin-top: 2px;
+}
+
+.kse-ps-case {
+    border-left: 3px solid #e6d9fb;
+    padding-left: 10px;
+}
+
+.kse-ps-case + .kse-ps-case {
+    margin-top: 12px;
+}
+
+.kse-ps-row + .kse-ps-row {
+    margin-top: 3px;
+}
+
+.kse-ps-label {
+    display: inline-block;
+    min-width: 3em;
+    color: #5b21b6;
+    font-weight: 600;
+    margin-right: 6px;
+}
+
+.kse-ps-value {
+    color: #374151;
+}
+
+.kse-generic {
+    margin: 0;
+    padding-left: 18px;
+    color: #374151;
+}
+
 .queue-empty {
     color: #bdc3c7;
     text-align: center;

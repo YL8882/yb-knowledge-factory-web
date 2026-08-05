@@ -892,13 +892,265 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Knowledge Structure Engine MVP display (Sprint 7, Task 3): `data` is now
-    // the structured Knowledge JSON object (structure_type/structure_label/
-    // content), not raw text — pretty-printed as-is so the Human Test can
-    // visually confirm different structure_types produce different content
-    // shapes. Reuses the existing rapid-learning-* classes, no new CSS.
-    // Per-structure_type visual rendering (Tree/Flow/Timeline/Table/...) is
-    // Task 4's job, kept out of this task to stay single-purpose.
+    // Learning Blueprint Renderer (Sprint 7, Task 4): dispatches on
+    // structure_type to a shape-specific layout instead of dumping raw JSON
+    // (Task 3's MVP display). Pure presentation — consumes the same Knowledge
+    // JSON Task 3 already produces/caches, never calls Gemini, never mutates
+    // data. All AI-generated text goes through textContent (never innerHTML)
+    // since it's untrusted model output.
+    const KNOWLEDGE_STRUCTURE_RENDERERS = {
+        flow: renderFlowStructure,
+        cause_effect: renderCauseEffectStructure,
+        classification: renderClassificationStructure,
+        decision: renderDecisionStructure,
+        comparison: renderComparisonStructure,
+        timeline: renderTimelineStructure,
+        problem_solution: renderProblemSolutionStructure,
+        generic: renderGenericStructure,
+    };
+
+    function renderFlowStructure(content) {
+        const el = document.createElement('div');
+        el.className = 'kse-flow';
+        (content.steps || []).forEach(function(step, index) {
+            if (index > 0) {
+                const arrow = document.createElement('div');
+                arrow.className = 'kse-flow-arrow';
+                arrow.textContent = '↓';
+                el.appendChild(arrow);
+            }
+            const stepEl = document.createElement('div');
+            stepEl.className = 'kse-flow-step';
+
+            const num = document.createElement('div');
+            num.className = 'kse-flow-step-num';
+            num.textContent = step.step || (index + 1);
+            stepEl.appendChild(num);
+
+            const body = document.createElement('div');
+            body.className = 'kse-flow-step-body';
+            const action = document.createElement('div');
+            action.className = 'kse-flow-step-action';
+            action.textContent = step.action || '';
+            body.appendChild(action);
+            if (step.purpose) {
+                const purpose = document.createElement('div');
+                purpose.className = 'kse-flow-step-purpose';
+                purpose.textContent = step.purpose;
+                body.appendChild(purpose);
+            }
+            stepEl.appendChild(body);
+
+            el.appendChild(stepEl);
+        });
+        return el;
+    }
+
+    function renderCauseEffectStructure(content) {
+        const el = document.createElement('div');
+        el.className = 'kse-cause-effect';
+        (content.chain || []).forEach(function(link) {
+            const item = document.createElement('div');
+            item.className = 'kse-ce-item';
+
+            const row = document.createElement('div');
+            row.className = 'kse-ce-row';
+            const cause = document.createElement('span');
+            cause.className = 'kse-ce-cause';
+            cause.textContent = link.cause || '';
+            const arrow = document.createElement('span');
+            arrow.className = 'kse-ce-arrow';
+            arrow.textContent = '→';
+            const effect = document.createElement('span');
+            effect.className = 'kse-ce-effect';
+            effect.textContent = link.effect || '';
+            row.appendChild(cause);
+            row.appendChild(arrow);
+            row.appendChild(effect);
+            item.appendChild(row);
+
+            if (link.because) {
+                const because = document.createElement('div');
+                because.className = 'kse-ce-because';
+                because.textContent = link.because;
+                item.appendChild(because);
+            }
+            el.appendChild(item);
+        });
+        return el;
+    }
+
+    function renderClassificationStructure(content) {
+        const el = document.createElement('div');
+        el.className = 'kse-classification';
+        (content.categories || []).forEach(function(cat) {
+            const catEl = document.createElement('div');
+            catEl.className = 'kse-category';
+
+            const name = document.createElement('div');
+            name.className = 'kse-category-name';
+            name.textContent = cat.trait ? (cat.category + '（' + cat.trait + '）') : (cat.category || '');
+            catEl.appendChild(name);
+
+            const list = document.createElement('ul');
+            list.className = 'kse-category-items';
+            (cat.items || []).forEach(function(item) {
+                const li = document.createElement('li');
+                li.textContent = item;
+                list.appendChild(li);
+            });
+            catEl.appendChild(list);
+
+            el.appendChild(catEl);
+        });
+        return el;
+    }
+
+    function renderDecisionStructure(content) {
+        const el = document.createElement('div');
+        el.className = 'kse-decision';
+
+        if (content.condition) {
+            const condition = document.createElement('div');
+            condition.className = 'kse-decision-condition';
+            condition.textContent = '條件：' + content.condition;
+            el.appendChild(condition);
+        }
+
+        const list = document.createElement('ul');
+        list.className = 'kse-decision-options';
+        (content.options || []).forEach(function(option) {
+            const li = document.createElement('li');
+            const choice = document.createElement('span');
+            choice.className = 'kse-decision-choice';
+            choice.textContent = option.choice || '';
+            const arrow = document.createElement('span');
+            arrow.className = 'kse-decision-arrow';
+            arrow.textContent = ' → ';
+            const outcome = document.createElement('span');
+            outcome.className = 'kse-decision-outcome';
+            outcome.textContent = option.outcome || '';
+            li.appendChild(choice);
+            li.appendChild(arrow);
+            li.appendChild(outcome);
+            list.appendChild(li);
+        });
+        el.appendChild(list);
+        return el;
+    }
+
+    function renderComparisonStructure(content) {
+        const table = document.createElement('table');
+        table.className = 'kse-comparison';
+
+        const thead = document.createElement('thead');
+        const headRow = document.createElement('tr');
+        ['維度', content.option_a_label || 'A', content.option_b_label || 'B'].forEach(function(text) {
+            const th = document.createElement('th');
+            th.textContent = text;
+            headRow.appendChild(th);
+        });
+        thead.appendChild(headRow);
+        table.appendChild(thead);
+
+        const tbody = document.createElement('tbody');
+        (content.dimensions || []).forEach(function(dim) {
+            const row = document.createElement('tr');
+            [dim.dimension, dim.option_a, dim.option_b].forEach(function(text) {
+                const td = document.createElement('td');
+                td.textContent = text || '';
+                row.appendChild(td);
+            });
+            tbody.appendChild(row);
+        });
+        table.appendChild(tbody);
+
+        return table;
+    }
+
+    function renderTimelineStructure(content) {
+        const el = document.createElement('div');
+        el.className = 'kse-timeline';
+        (content.events || []).forEach(function(event) {
+            const item = document.createElement('div');
+            item.className = 'kse-timeline-event';
+
+            const time = document.createElement('div');
+            time.className = 'kse-timeline-time';
+            time.textContent = event.time || '';
+            item.appendChild(time);
+
+            const body = document.createElement('div');
+            body.className = 'kse-timeline-body';
+            const eventText = document.createElement('div');
+            eventText.className = 'kse-timeline-event-text';
+            eventText.textContent = event.event || '';
+            body.appendChild(eventText);
+            if (event.significance) {
+                const significance = document.createElement('div');
+                significance.className = 'kse-timeline-significance';
+                significance.textContent = event.significance;
+                body.appendChild(significance);
+            }
+            item.appendChild(body);
+
+            el.appendChild(item);
+        });
+        return el;
+    }
+
+    function renderProblemSolutionStructure(content) {
+        const el = document.createElement('div');
+        el.className = 'kse-problem-solution';
+        const ROWS = [
+            ['problem', '問題'],
+            ['root_cause', '原因'],
+            ['solution', '解法'],
+            ['result', '結果'],
+        ];
+        (content.cases || []).forEach(function(caseItem) {
+            const caseEl = document.createElement('div');
+            caseEl.className = 'kse-ps-case';
+            ROWS.forEach(function(pair) {
+                const key = pair[0];
+                const label = pair[1];
+                if (!caseItem[key]) return;
+                const row = document.createElement('div');
+                row.className = 'kse-ps-row';
+                const labelEl = document.createElement('span');
+                labelEl.className = 'kse-ps-label';
+                labelEl.textContent = label;
+                const valueEl = document.createElement('span');
+                valueEl.className = 'kse-ps-value';
+                valueEl.textContent = caseItem[key];
+                row.appendChild(labelEl);
+                row.appendChild(valueEl);
+                caseEl.appendChild(row);
+            });
+            el.appendChild(caseEl);
+        });
+        return el;
+    }
+
+    // Fallback for structure_type = "generic", and defensively for any
+    // unrecognized/future structure_type — never a hard crash on unexpected data.
+    function renderGenericStructure(content) {
+        const list = document.createElement('ul');
+        list.className = 'kse-generic';
+        (content.points || []).forEach(function(point) {
+            const li = document.createElement('li');
+            li.textContent = point;
+            list.appendChild(li);
+        });
+        return list;
+    }
+
+    // Knowledge Structure Engine Renderer (Sprint 7, Task 4): `data` is the
+    // structured Knowledge JSON object (structure_type/structure_label/
+    // content) Task 3 produces/caches. Dispatches on structure_type to the
+    // matching renderer above; unrecognized structure_type falls back to the
+    // generic bullet renderer (reads content.points if present, otherwise
+    // renders nothing rather than crashing).
     function buildLearningBlueprintSection(videoId, data) {
         const section = document.createElement('div');
         section.className = 'rapid-learning-section';
@@ -911,9 +1163,9 @@ document.addEventListener('DOMContentLoaded', function() {
             '<div class="rapid-learning-heading">🗺️ Learning Blueprint（' + label + '）</div>' +
             '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>';
 
-        const contentEl = document.createElement('pre');
-        contentEl.className = 'rapid-learning-content';
-        contentEl.textContent = JSON.stringify(data, null, 2);
+        const renderer = KNOWLEDGE_STRUCTURE_RENDERERS[data.structure_type] || renderGenericStructure;
+        const contentEl = renderer(data.content || {});
+        contentEl.classList.add('rapid-learning-content');
         block.appendChild(contentEl);
 
         section.appendChild(block);
