@@ -289,6 +289,8 @@ Sprint 7 完成後的穩定化與打磨；不新增 Learning Model 功能模組�
 
 Priority／Development Order（Sprint 8 Proposal 確認）：P0（Task 1 Error Path、Task 3 Loading/Processing）→ P1（Task 2 Queue Card UI、Task 4 classify_error）→ P2（Task 5 Structure Detection 一致性）。開發順序：Task 1 → Task 3 → Task 2 → Task 4 → Task 5。
 
+**Task 5 決定延後至 Product Backlog（未執行）：** 使用者審閱 Proposal 後認為目前沒有可穩定重現的 `structure_type` 判斷不一致案例，無法建立 Before／After 比較、無法定義明確 PASS／FAIL，Human Test 沒有客觀驗收方式；依「可驗收的 Bug 優先」原則，改為等之後再次遇到真實不一致案例時，依該案例修正與驗收，詳見下方 Product Backlog。
+
 ### Task 1 — Gemini 呼叫失敗 Error Path ✅ Completed
 
 - [x] Learning Blueprint／Teach Back／Action List／Review 四個模組呼叫 Gemini 失敗時，錯誤訊息顯示在觸發的那張 Queue Card／按鈕旁邊（inline），不再只寫入頁面頂部、可能捲動出畫面外的 `#status`
@@ -376,9 +378,10 @@ Future versions only.
 - [ ] Multi-language
 - [ ] iOS App
 - [ ] Known Intermittent Issue 觀察追蹤（Study Note 偶發卡住／下載階段失敗，目前無法穩定重現；若再次出現需以完整 Log 重新開啟 RCA）
-- [ ] `error_messages.classify_error()` stage 判斷精確度改善（避免下載階段錯誤誤標為 Gemini 額度問題）
 - [ ] Learning Blueprint Error Path（`GeminiGenerationError` → HTTP 500）：重試策略、錯誤訊息與 UI 提示、是否自動重試。獨立 Bug Fix Task，不併入 Sprint 7 Task 3／4。發現於 Task 3／4 Human Test 期間（Assistant 短時間內連續呼叫約 15 次 Gemini API 做一致性驗證時觸發過一次，非常態重現）
 
   **需求：** 目前 Extension 僅支援 `https://www.youtube.com/watch?v=`，未支援 `https://www.youtube.com/shorts/`。Shorts 頁面需顯示 YB Learn 按鈕，點擊直接加入 Queue，不需手動貼網址，體驗與一般影片一致。
 - [ ] Queue Card 預設保持簡潔，只顯示一句話重點與學習入口，詳細內容預設收合、按需展開（Sprint 8 Task 2 Human Test 提出的 UX Improvement，非本次範圍）：5 個模組（Rapid Learning／Learning Blueprint／Teach Back／Action List／Review）預設收合，點擊後才展開。Task 2 已完成的是「可以收合」，這項是「預設就收合」，屬於後續獨立的 UX 決策，不併入 Task 2。
 - [ ] 字幕下載 429 被靜默吞掉，Whisper fallback 也失敗時顯示誤導訊息（Sprint 8 Task 4 Human Test 發現的真實案例，非本次範圍）：`main.py:260-263` 的 `fetch_subtitle_transcript()` 失敗（例如字幕下載遭 YouTube 429 Rate Limit）目前完全靜默吞掉錯誤文字、直接 fallback 到音訊下載＋本機 Whisper；若 fallback 也沒能產生內容（`TranscriptionError("empty transcript")`），使用者看到的是「找不到可用的逐字稿內容」，看不出真正原因其實是字幕下載被暫時限流（Retry 後即成功）。修正需要同時改 `app/main.py`（記住字幕下載失敗的原始錯誤文字，不再直接丟棄；Whisper fallback 也失敗時優先用這段文字分類）與 `app/error_messages.py`（新增字幕＋429／rate limit 的專屬分類，回傳「YouTube 暫時限制字幕下載，請稍後再試。」），超出 Task 4 原訂只改 `error_messages.py` 的範圍，故列入 Backlog 待後續獨立處理。
+- [ ] Structure Detection 一致性改善（Sprint 8 Task 5，決定延後）：同一支內容特徵模糊的影片，重複生成 Learning Blueprint 可能得到不同 `structure_type`（`temperature=0` 已改善但未完全消除）。Proposal 已規劃修法（`_LEARNING_BLUEPRINT_SYSTEM_INSTRUCTION` 新增判斷優先順序規則），但審閱後判定：目前沒有可穩定重現的不一致案例，無法建立 Before／After 比較、無法定義明確 PASS／FAIL，不符合「可驗收的 Bug 優先」原則。**觸發條件：** 等之後再次遇到真實的 `structure_type` 判斷不一致案例（記錄下該案例的影片與兩次不同的判斷結果），再依該案例修正與驗收，不要在沒有真實案例時純靠猜測調整 Prompt。
+- [ ] Sprint 8.5（Beta Polish，待 Sprint 8 完成後決定是否排入）：Queue Card 資訊層級預設簡潔化（見上方「Queue Card 預設保持簡潔」項）、學習入口依學習時間排序、其他 Beta 實際使用過程中發現的 UX 細節。屬於產品體驗優化，不影響 Sprint 8「穩定性優先」的目標，Sprint 8 Integration Test 通過後再確認是否成立。
