@@ -433,11 +433,58 @@ Rapid Learning／Learning Blueprint／Teach Back／Action List／Review 五個�
 
 僅修改 `app/static/script.js`（5 個 `buildXSection()` 改為標題＋可收合主體，新增共用 `buildModuleToggleHeader()` 與 5 個獨立的收合狀態 Set）、`app/static/style.css`（新增 Accordion Header／箭頭樣式）。未修改任何後端、Task 1 inline 錯誤機制、Task 3 Loading／`buildTriggerButton()`、Queue／History／Export、Chrome Extension。
 
+### Task 4 — `classify_error()` 分類精確度改善
+
+Quota／Rate Limit／Auth 關鍵字命中時，依 stage 分流訊息：`studynote`（Gemini 呼叫）維持提及 Gemini 額度；`download`／`transcript`（yt-dlp／本機 Whisper，不呼叫 Gemini）改為不指名來源的通用訊息，不再誤標成 Gemini 問題。
+
+- [x] 純函式驗證：`download`／`transcript` + 429／403 等關鍵字 → 通用訊息，不再出現「Gemini API 額度」字樣
+- [x] 迴歸：`studynote` + quota 關鍵字 → 訊息不變（仍提及 Gemini）
+- [x] 迴歸：`empty transcript`／安全過濾／私人影片／YouTube 限制／網路問題等其他分類文字與邏輯皆不變
+
+**Test Date:** 2026-08-06
+**Test Result:** PASS
+
+#### 正式驗收案例：YouTube 字幕下載 429 → Retry 成功（真實案例，非模擬）
+
+Human Test 過程中使用者實際遇到的真實錯誤，直接作為本次驗收證據：
+
+```text
+Unable to download video subtitles for 'zh-Hant'
+
+HTTP Error 429: Too Many Requests
+```
+
+**Case:** YouTube Subtitle Download HTTP 429
+
+**Observed:** yt-dlp subtitle download returned HTTP 429（上方原始錯誤文字）
+
+**Expected UI（Product Backlog 目標，非本次 Task 4 實際產出——見下方說明）:** 「YouTube 暫時限制字幕下載，請稍後再試。」
+
+**Retry:** PASS（不需重新整理頁面）
+
+**Final Result:**
+- Transcript：成功
+- Study Note：成功
+- Download：成功
+
+- [x] 第一次執行：字幕下載遭 YouTube 429 Rate Limit
+- [x] 點擊 Retry：不需重新整理頁面
+- [x] Retry 後 Transcript 成功產生
+- [x] Retry 後 Study Note 成功產生
+- [x] 確認並非 Gemini API 額度問題，是 YouTube 字幕下載端的暫時性限流
+
+**關於「Expected UI」的重要澄清：** 上方「YouTube 暫時限制字幕下載，請稍後再試。」是這個案例**最終應該達到的目標訊息**，但**不是本次 Task 4 實際會顯示的文字**。真實案例發生當下，字幕 429 被 `main.py` 既有邏輯靜默吞掉，UI 沒有顯示任何錯誤訊息（直接無聲 fallback 嘗試 Whisper）。要讓 UI 真的顯示這句話，需要同時修改 `app/main.py`（保留字幕錯誤文字，不再丟棄），已列入 Product Backlog、不屬於本次 Task 4 Scope（見下方過程記錄）。本次 Task 4 驗證的是 Retry Flow 本身正常、且確認問題根源並非 Gemini 額度。
+
+**過程記錄：** 使用者在 Proposal 審閱階段提出這個真實案例，帶出一個比原訂 Scope 更深的既有落差：`main.py` 目前會靜默吞掉字幕下載失敗的錯誤文字，直接 fallback 到音訊下載＋本機 Whisper；若 fallback 也失敗（`TranscriptionError("empty transcript")`），使用者看到的是「找不到可用的逐字稿內容」，而非真正的 429 原因。修正這點需要同時改 `app/main.py`（保留字幕錯誤文字）與 `app/error_messages.py`（新增字幕＋429 的專屬分類），超出本次「僅改 `error_messages.py`」的 Scope，經使用者確認後列入 `TODO.md` Product Backlog，不併入 Task 4。本次 Task 4 完成的是 Root Cause 的另一半：`classify_error()` 本身在收到 429／Quota 等關鍵字時，不再無條件假設是 Gemini 問題。Retry Flow（不需重新整理頁面即可重試並成功）本身不受本次修改影響，維持既有行為，使用者確認符合預期。
+
+僅修改 `app/error_messages.py`（新增 `_SERVICE_UNAVAILABLE_SOURCE` 常數＋一行 stage 分流判斷）。未修改 `app/main.py`、Workflow、Stage Guard、Single Worker、UI、其他模組。
+
 ### Sprint Result
 
 - [x] Task 1 completed and accepted
 - [x] Task 3 completed and accepted
 - [x] Task 2 completed and accepted
+- [x] Task 4 completed and accepted
 
 ---
 

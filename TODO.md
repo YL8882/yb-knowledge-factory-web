@@ -326,6 +326,15 @@ Priority／Development Order（Sprint 8 Proposal 確認）：P0（Task 1 Error P
 
 **過程記錄：** Proposal 最初依你回饋的 UX Issue 規劃成 Accordion（一次一個、自動收合前一個），過程中額外釐清「Study Note」在 Queue Card 裡其實沒有行內展開區塊（只會自動下載，History 頁面的「開啟 Study Note」是另開新分頁），確認使用者所指其實是 Rapid Learning。提出 Accordion Proposal 後，使用者主動簡化需求，改為單純獨立展開／收合，理由是維持 MVP、避免過度設計；重新規劃並確認 Scope 後實作，Human Test 6 項（展開/收合、獨立 Toggle、收合後功能、Rapid Learning 迴歸、整體 Regression、再次展開）全數 PASS。
 
+### Task 4 — `classify_error()` 分類精確度改善 ✅ Completed
+
+- [x] Quota／Rate Limit／Auth 關鍵字（`quota`／`429`／`503`／`overloaded`／`rate limit`／`api key`／`unauthorized`／`401`／`403`）命中時，依 `stage` 分流訊息文字：`stage == "studynote"`（Gemini 呼叫）才顯示「可能是 Gemini API 額度已用完」；`download`／`transcript`（yt-dlp／本機 Whisper，皆不呼叫 Gemini）改顯示新增的通用訊息「服務目前無法使用或過於忙碌，請稍後再試。」，不再誤標成 Gemini 問題
+- [x] `_NO_TRANSCRIPT`／`_CONTENT_FILTERED`／`_PRIVATE_OR_UNAVAILABLE`／`_YOUTUBE_RESTRICTED`／`_NETWORK_ISSUE`／`_UNKNOWN` 邏輯與文字皆不變（迴歸）
+
+僅修改 `app/error_messages.py`（新增 `_SERVICE_UNAVAILABLE_SOURCE` 常數＋一行 stage 分流判斷）。未修改 `main.py` 任何呼叫點的 `stage` 參數、Workflow、Stage Guard、Single Worker、UI、其他模組。
+
+**過程記錄：** Proposal 階段確認 Root Cause：Quota 關鍵字判斷未依 stage 區分來源，`download`／`transcript` 階段若剛好命中 `429`／`403` 等數字（yt-dlp／YouTube 本身的錯誤碼），會被誤判成 Gemini 額度問題。Proposal 審閱過程中使用者以真實 Human Test 案例（見 `Acceptance_Test.md`）帶出一個更深的既有落差：`main.py` 的字幕下載失敗會被靜默吞掉，若後續 Whisper fallback 也失敗，最終看到的是「找不到可用的逐字稿內容」而非真正的 429 原因——這需要同時修改 `app/main.py` 才能解決，超出本次「只改 `error_messages.py`」的 Scope，經使用者確認後列入 Product Backlog，不併入 Task 4。本次 Scope 內的修正以純函式呼叫窮舉所有分支驗證（含使用者提供的真實 429 錯誤文字），確認修正生效且無既有分支被影響；Human Test 以使用者已回報的真實案例（YouTube 字幕 429 → Retry → Transcript／Study Note 皆成功）作為正式驗收證據，PASS。
+
 ---
 
 ## Acceptance
@@ -372,3 +381,4 @@ Future versions only.
 
   **需求：** 目前 Extension 僅支援 `https://www.youtube.com/watch?v=`，未支援 `https://www.youtube.com/shorts/`。Shorts 頁面需顯示 YB Learn 按鈕，點擊直接加入 Queue，不需手動貼網址，體驗與一般影片一致。
 - [ ] Queue Card 預設保持簡潔，只顯示一句話重點與學習入口，詳細內容預設收合、按需展開（Sprint 8 Task 2 Human Test 提出的 UX Improvement，非本次範圍）：5 個模組（Rapid Learning／Learning Blueprint／Teach Back／Action List／Review）預設收合，點擊後才展開。Task 2 已完成的是「可以收合」，這項是「預設就收合」，屬於後續獨立的 UX 決策，不併入 Task 2。
+- [ ] 字幕下載 429 被靜默吞掉，Whisper fallback 也失敗時顯示誤導訊息（Sprint 8 Task 4 Human Test 發現的真實案例，非本次範圍）：`main.py:260-263` 的 `fetch_subtitle_transcript()` 失敗（例如字幕下載遭 YouTube 429 Rate Limit）目前完全靜默吞掉錯誤文字、直接 fallback 到音訊下載＋本機 Whisper；若 fallback 也沒能產生內容（`TranscriptionError("empty transcript")`），使用者看到的是「找不到可用的逐字稿內容」，看不出真正原因其實是字幕下載被暫時限流（Retry 後即成功）。修正需要同時改 `app/main.py`（記住字幕下載失敗的原始錯誤文字，不再直接丟棄；Whisper fallback 也失敗時優先用這段文字分類）與 `app/error_messages.py`（新增字幕＋429／rate limit 的專屬分類，回傳「YouTube 暫時限制字幕下載，請稍後再試。」），超出 Task 4 原訂只改 `error_messages.py` 的範圍，故列入 Backlog 待後續獨立處理。

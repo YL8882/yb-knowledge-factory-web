@@ -8,6 +8,7 @@ _PRIVATE_OR_UNAVAILABLE = "這支影片是私人影片或已下架，無法存�
 _YOUTUBE_RESTRICTED = "YouTube 限制存取這支影片（可能是地區限制、年齡限制或版權限制）。"
 _NETWORK_ISSUE = "網路連線發生問題，請檢查網路狀態後再試一次。"
 _SERVICE_UNAVAILABLE = "AI 處理服務目前無法使用或過於忙碌，請稍後再試（可能是 Gemini API 額度已用完）。"
+_SERVICE_UNAVAILABLE_SOURCE = "服務目前無法使用或過於忙碌，請稍後再試。"
 _CONTENT_FILTERED = "Gemini 判定這段逐字稿內容不適合產生 Study Note（可能觸發安全過濾），請嘗試其他影片。"
 _UNKNOWN = "處理過程發生未預期的問題，請重試。"
 
@@ -27,12 +28,16 @@ def classify_error(raw_message: str, stage: str = "") -> str:
 
     # Quota / rate-limit / auth errors can come from either yt-dlp or the Gemini
     # API — check these before the YouTube-specific buckets below so a Gemini
-    # error is never misread as a YouTube restriction.
+    # error is never misread as a YouTube restriction. Only "studynote" (Gemini
+    # calls) gets the Gemini-specific wording — "download"/"transcript" never
+    # touch Gemini (yt-dlp and local faster_whisper respectively), so a 429/403
+    # from YouTube itself (e.g. subtitle download rate-limited) must not be
+    # blamed on Gemini quota.
     if any(keyword in text for keyword in (
         "quota", "429", "resource_exhausted", "503", "overloaded", "rate limit",
         "api key", "unauthorized", "401", "403",
     )):
-        return _SERVICE_UNAVAILABLE
+        return _SERVICE_UNAVAILABLE if stage == "studynote" else _SERVICE_UNAVAILABLE_SOURCE
 
     if stage == "studynote":
         if any(keyword in text for keyword in ("safety", "blocked", "recitation", "prohibited_content")):
