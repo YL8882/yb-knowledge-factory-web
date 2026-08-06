@@ -936,11 +936,34 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // Task 1 (Sprint 8): renders/updates a small error message right next to
+    // the button the user clicked, instead of relying solely on the
+    // page-level #status box (which can scroll out of view on a long
+    // Queue/History list). The button itself is the retry affordance — it's
+    // already re-enabled on failure, so no separate retry button is added.
+    function showInlineError(button, message) {
+        let errorEl = button.nextElementSibling;
+        if (!errorEl || !errorEl.classList.contains('queue-item-inline-error')) {
+            errorEl = document.createElement('div');
+            errorEl.className = 'queue-item-inline-error';
+            button.insertAdjacentElement('afterend', errorEl);
+        }
+        errorEl.textContent = '⚠ ' + message + '，可再次點擊重試';
+    }
+
+    function clearInlineError(button) {
+        const errorEl = button.nextElementSibling;
+        if (errorEl && errorEl.classList.contains('queue-item-inline-error')) {
+            errorEl.remove();
+        }
+    }
+
     // Learning Blueprint Engine (Sprint 7, Task 3): manual, opt-in trigger —
     // mirrors startRapidLearning()'s shape but hits the separate
     // /learning-blueprint endpoint and its own cache.
     async function startLearningBlueprint(videoId, button) {
         button.disabled = true;
+        clearInlineError(button);
         try {
             const response = await fetch(
                 '/api/queue/' + encodeURIComponent(videoId) + '/learning-blueprint',
@@ -948,7 +971,9 @@ document.addEventListener('DOMContentLoaded', function() {
             );
             const data = await response.json();
             if (!response.ok) {
-                showStatus(data.detail || '產生 Learning Blueprint 失敗', 'error');
+                const message = data.detail || '產生 Learning Blueprint 失敗';
+                showStatus(message, 'error');
+                showInlineError(button, message);
                 button.disabled = false;
                 return;
             }
@@ -956,6 +981,7 @@ document.addEventListener('DOMContentLoaded', function() {
             await loadQueue();
         } catch (error) {
             showStatus('網路連線失敗', 'error');
+            showInlineError(button, '網路連線失敗');
             button.disabled = false;
         }
     }
@@ -1270,6 +1296,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // which requires a Learning Blueprint to already exist server-side.
     async function startTeachBack(videoId, button) {
         button.disabled = true;
+        clearInlineError(button);
         try {
             const response = await fetch(
                 '/api/queue/' + encodeURIComponent(videoId) + '/teach-back',
@@ -1277,7 +1304,9 @@ document.addEventListener('DOMContentLoaded', function() {
             );
             const data = await response.json();
             if (!response.ok) {
-                showStatus(data.detail || '產生 Teach Back 失敗', 'error');
+                const message = data.detail || '產生 Teach Back 失敗';
+                showStatus(message, 'error');
+                showInlineError(button, message);
                 button.disabled = false;
                 return;
             }
@@ -1285,6 +1314,7 @@ document.addEventListener('DOMContentLoaded', function() {
             await loadQueue();
         } catch (error) {
             showStatus('網路連線失敗', 'error');
+            showInlineError(button, '網路連線失敗');
             button.disabled = false;
         }
     }
@@ -1433,6 +1463,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // requires a Learning Blueprint to already exist server-side.
     async function startActionList(videoId, button) {
         button.disabled = true;
+        clearInlineError(button);
         try {
             const response = await fetch(
                 '/api/queue/' + encodeURIComponent(videoId) + '/action-list',
@@ -1440,7 +1471,9 @@ document.addEventListener('DOMContentLoaded', function() {
             );
             const data = await response.json();
             if (!response.ok) {
-                showStatus(data.detail || '產生 Action List 失敗', 'error');
+                const message = data.detail || '產生 Action List 失敗';
+                showStatus(message, 'error');
+                showInlineError(button, message);
                 button.disabled = false;
                 return;
             }
@@ -1448,6 +1481,7 @@ document.addEventListener('DOMContentLoaded', function() {
             await loadQueue();
         } catch (error) {
             showStatus('網路連線失敗', 'error');
+            showInlineError(button, '網路連線失敗');
             button.disabled = false;
         }
     }
@@ -1521,6 +1555,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // requires a Learning Blueprint to already exist server-side.
     async function startReview(videoId, button) {
         button.disabled = true;
+        clearInlineError(button);
         try {
             const response = await fetch(
                 '/api/queue/' + encodeURIComponent(videoId) + '/review',
@@ -1528,7 +1563,9 @@ document.addEventListener('DOMContentLoaded', function() {
             );
             const data = await response.json();
             if (!response.ok) {
-                showStatus(data.detail || '產生 Review 失敗', 'error');
+                const message = data.detail || '產生 Review 失敗';
+                showStatus(message, 'error');
+                showInlineError(button, message);
                 button.disabled = false;
                 return;
             }
@@ -1536,6 +1573,7 @@ document.addEventListener('DOMContentLoaded', function() {
             await loadQueue();
         } catch (error) {
             showStatus('網路連線失敗', 'error');
+            showInlineError(button, '網路連線失敗');
             button.disabled = false;
         }
     }

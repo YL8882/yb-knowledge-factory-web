@@ -378,6 +378,31 @@ Gemini 呼叫失敗的 Error Path，不屬於本次驗收範圍，已在 `TODO.m
 
 ---
 
+## Sprint 8 — Reliability & Product Polish
+
+### Task 1 — Gemini 呼叫失敗 Error Path
+
+Learning Blueprint／Teach Back／Action List／Review 四個模組呼叫 Gemini 失敗時，錯誤訊息改為顯示在觸發的那個按鈕旁邊（inline），取代原本只寫入頁面頂部、可能捲動出畫面外的 `#status`。按鈕本身即為重試入口（失敗後自動重新啟用），未新增獨立的重試按鈕。
+
+- [x] 正常情境：4 個模組正常成功產生內容，畫面與原本一致
+- [x] 失敗情境：對尚未建立 Learning Blueprint 的影片觸發 Teach Back／Action List／Review，錯誤文字正確出現在該按鈕旁邊，即使卡片在頁面下方也不用捲回頂部
+- [x] 按鈕失敗後仍可點擊，非永久停用
+- [x] 迴歸：加入暫存區／刪除／匯出等既有功能的頂部 `#status` 行為不受影響
+- [x] Retry：可再次點擊、正常重新呼叫 API、Loading 狀態正常恢復、成功後錯誤訊息隨卡片重繪自動清除，不需重新整理頁面
+
+**Test Date:** 2026-08-06
+**Test Result:** PASS
+
+**過程記錄：** Proposal 階段研究確認後端錯誤回應與前端「失敗後按鈕重新啟用」的重試機制本來就存在，真正落差是頂部 `#status` 在長列表下容易被忽略；本次僅針對此 root cause 修正。Assistant 以 `node --check` 驗證語法，並對真實影片（`video_id=V6KgW35co8E`）呼叫 `POST /api/queue/{video_id}/teach-back` 確認 400 錯誤格式不受影響、無磁碟副作用；本次環境無瀏覽器自動化工具，實際視覺／點擊確認由使用者於瀏覽器完成 Human Test（含 Retry 情境），回報 PASS。
+
+僅修改 `app/static/script.js`（新增 `showInlineError()`／`clearInlineError()`，套用到既有 4 個 `startX()` 函式）、`app/static/style.css`（新增 `.queue-item-inline-error` 樣式）。未修改 `app/main.py`、`app/error_messages.py`、Workflow、Stage Guard、Single Worker、Queue Store、History、Export、Chrome Extension。
+
+### Sprint Result
+
+- [x] Task 1 completed and accepted
+
+---
+
 # MVP Acceptance
 
 The Lite MVP is complete when:

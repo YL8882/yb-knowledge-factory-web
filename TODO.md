@@ -283,6 +283,24 @@ Gemini 呼叫失敗的 Error Path、Structure Detection 一致性：不屬於 Ta
 
 ---
 
+## Sprint 8 — Reliability & Product Polish
+
+Sprint 7 完成後的穩定化與打磨；不新增 Learning Model 功能模組，聚焦 Error Handling、Loading／Processing 體驗、Queue Card UI 整理與既有 Product Backlog 缺口修正。
+
+Priority／Development Order（Sprint 8 Proposal 確認）：P0（Task 1 Error Path、Task 3 Loading/Processing）→ P1（Task 2 Queue Card UI、Task 4 classify_error）→ P2（Task 5 Structure Detection 一致性）。開發順序：Task 1 → Task 3 → Task 2 → Task 4 → Task 5。
+
+### Task 1 — Gemini 呼叫失敗 Error Path ✅ Completed
+
+- [x] Learning Blueprint／Teach Back／Action List／Review 四個模組呼叫 Gemini 失敗時，錯誤訊息顯示在觸發的那張 Queue Card／按鈕旁邊（inline），不再只寫入頁面頂部、可能捲動出畫面外的 `#status`
+- [x] 按鈕本身即為重試入口（失敗後自動重新啟用），未新增獨立的重試按鈕
+- [x] Retry：可再次點擊、正常重新呼叫 API、Loading 狀態正常恢復、成功後錯誤訊息隨卡片重繪自動清除，不需重新整理頁面
+
+新增共用 helper `showInlineError()`／`clearInlineError()`，套用到既有 4 個 `startX()` 函式。僅修改 `app/static/script.js`、`app/static/style.css`。未修改 `app/main.py`、`app/error_messages.py`、其他既有呼叫點（加入暫存區／刪除／匯出）。
+
+**過程記錄：** Proposal 階段研究發現，4 個模組後端已回傳分類過的錯誤訊息、前端失敗後按鈕也早已重新啟用（重試機制其實已存在），真正的落差（root cause）是 `showStatus()` 只寫入頁面唯一、非 sticky 的頂部 `#status`，Queue／History 列表較長時容易被使用者忽略。本次只修正這個 root cause，未重做已經正確的部分。Assistant 以 `node --check` 驗證語法，並對真實影片（`video_id=V6KgW35co8E`）呼叫 `POST /api/queue/{video_id}/teach-back` 確認 400 錯誤格式不受影響、無磁碟副作用；受限於本次環境沒有瀏覽器自動化工具，實際視覺／點擊確認（含使用者新增的 Retry 情境）由使用者於瀏覽器完成 Human Test，回報 PASS。
+
+---
+
 ## Acceptance
 
 - [ ] Complete end-to-end workflow

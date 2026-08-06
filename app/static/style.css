@@ -636,6 +636,16 @@ main {
     cursor: not-allowed;
 }
 
+/* Task 1 (Sprint 8): inline error next to the button that triggered it — the
+   page-level #status box can scroll out of view on a long Queue/History
+   list, so these per-card actions need their own visible failure cue. */
+.queue-item-inline-error {
+    display: block;
+    margin-top: 6px;
+    font-size: 0.85em;
+    color: #b3261e;
+}
+
 .rapid-learning-section {
     margin-top: 10px;
     padding: 12px;
