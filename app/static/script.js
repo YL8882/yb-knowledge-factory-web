@@ -588,6 +588,34 @@ document.addEventListener('DOMContentLoaded', function() {
         return null;
     }
 
+    // Task 3 (Sprint 8): shared button builder for the 5 manual Learning
+    // Model triggers below (Rapid Learning / Learning Blueprint / Teach Back
+    // / Action List / Review). renderQueue() rebuilds every <li> from scratch
+    // on each poll tick (every 1.5s, whenever any OTHER video is still
+    // auto-pipelining) — before this, a startX() click only disabled the DOM
+    // node it was handed, so a poll-triggered rebuild mid-request replaced it
+    // with a fresh, non-disabled button (the cache/path field it checks
+    // isn't set until the request finishes), letting a user re-click and
+    // fire a second concurrent Gemini call. Checking the same *FetchInFlight
+    // Set that already guards each module's fetchXIntoCache() means every
+    // rebuild — not just the DOM node from the original click — renders the
+    // loading state while a request for that video is outstanding.
+    function buildTriggerButton(icon, idleLabel, videoId, inFlightSet, onStart) {
+        const button = document.createElement('button');
+        button.className = 'queue-item-rapid-learning';
+        button.type = 'button';
+        if (inFlightSet.has(videoId)) {
+            button.disabled = true;
+            button.innerHTML = '<span aria-hidden="true">⏳</span> 處理中…';
+        } else {
+            button.innerHTML = '<span aria-hidden="true">' + icon + '</span> ' + idleLabel;
+            button.addEventListener('click', function() {
+                onStart(videoId, button);
+            });
+        }
+        return button;
+    }
+
     function renderQueue(items) {
         queueList.innerHTML = '';
 
@@ -698,14 +726,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 } else if (item.knowledge_outline_path) {
                     fetchKnowledgeOutlineIntoCache(item.video_id);
                 } else {
-                    const rapidLearningBtn = document.createElement('button');
-                    rapidLearningBtn.className = 'queue-item-rapid-learning';
-                    rapidLearningBtn.type = 'button';
-                    rapidLearningBtn.innerHTML = '<span aria-hidden="true">🧠</span> 開始快速學習';
-                    rapidLearningBtn.addEventListener('click', function() {
-                        startRapidLearning(item.video_id, rapidLearningBtn);
-                    });
-                    li.appendChild(rapidLearningBtn);
+                    li.appendChild(buildTriggerButton(
+                        '🧠', '開始快速學習', item.video_id, knowledgeOutlineFetchInFlight, startRapidLearning
+                    ));
                 }
             }
 
@@ -720,14 +743,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 } else if (item.learning_blueprint_path) {
                     fetchLearningBlueprintIntoCache(item.video_id);
                 } else {
-                    const blueprintBtn = document.createElement('button');
-                    blueprintBtn.className = 'queue-item-rapid-learning';
-                    blueprintBtn.type = 'button';
-                    blueprintBtn.innerHTML = '<span aria-hidden="true">🗺️</span> 建立知識架構';
-                    blueprintBtn.addEventListener('click', function() {
-                        startLearningBlueprint(item.video_id, blueprintBtn);
-                    });
-                    li.appendChild(blueprintBtn);
+                    li.appendChild(buildTriggerButton(
+                        '🗺️', '建立知識架構', item.video_id, learningBlueprintFetchInFlight, startLearningBlueprint
+                    ));
                 }
             }
 
@@ -742,14 +760,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 } else if (item.teach_back_path) {
                     fetchTeachBackIntoCache(item.video_id);
                 } else {
-                    const teachBackBtn = document.createElement('button');
-                    teachBackBtn.className = 'queue-item-rapid-learning';
-                    teachBackBtn.type = 'button';
-                    teachBackBtn.innerHTML = '<span aria-hidden="true">📝</span> 開始 Teach Back';
-                    teachBackBtn.addEventListener('click', function() {
-                        startTeachBack(item.video_id, teachBackBtn);
-                    });
-                    li.appendChild(teachBackBtn);
+                    li.appendChild(buildTriggerButton(
+                        '📝', '開始 Teach Back', item.video_id, teachBackFetchInFlight, startTeachBack
+                    ));
                 }
             }
 
@@ -763,14 +776,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 } else if (item.action_list_path) {
                     fetchActionListIntoCache(item.video_id);
                 } else {
-                    const actionListBtn = document.createElement('button');
-                    actionListBtn.className = 'queue-item-rapid-learning';
-                    actionListBtn.type = 'button';
-                    actionListBtn.innerHTML = '<span aria-hidden="true">✅</span> 開始 Action List';
-                    actionListBtn.addEventListener('click', function() {
-                        startActionList(item.video_id, actionListBtn);
-                    });
-                    li.appendChild(actionListBtn);
+                    li.appendChild(buildTriggerButton(
+                        '✅', '開始 Action List', item.video_id, actionListFetchInFlight, startActionList
+                    ));
                 }
             }
 
@@ -783,14 +791,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 } else if (item.review_path) {
                     fetchReviewIntoCache(item.video_id);
                 } else {
-                    const reviewBtn = document.createElement('button');
-                    reviewBtn.className = 'queue-item-rapid-learning';
-                    reviewBtn.type = 'button';
-                    reviewBtn.innerHTML = '<span aria-hidden="true">🔄</span> 開始 Review';
-                    reviewBtn.addEventListener('click', function() {
-                        startReview(item.video_id, reviewBtn);
-                    });
-                    li.appendChild(reviewBtn);
+                    li.appendChild(buildTriggerButton(
+                        '🔄', '開始 Review', item.video_id, reviewFetchInFlight, startReview
+                    ));
                 }
             }
 
@@ -888,6 +891,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // success — cards are rebuilt from scratch on every render, so there's no
     // stable per-card DOM node to patch directly once the fetch resolves.
     async function startRapidLearning(videoId, button) {
+        if (knowledgeOutlineFetchInFlight.has(videoId)) {
+            return;
+        }
+        knowledgeOutlineFetchInFlight.add(videoId);
         button.disabled = true;
         try {
             const response = await fetch(
@@ -905,6 +912,8 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (error) {
             showStatus('網路連線失敗', 'error');
             button.disabled = false;
+        } finally {
+            knowledgeOutlineFetchInFlight.delete(videoId);
         }
     }
 
@@ -962,6 +971,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // mirrors startRapidLearning()'s shape but hits the separate
     // /learning-blueprint endpoint and its own cache.
     async function startLearningBlueprint(videoId, button) {
+        if (learningBlueprintFetchInFlight.has(videoId)) {
+            return;
+        }
+        learningBlueprintFetchInFlight.add(videoId);
         button.disabled = true;
         clearInlineError(button);
         try {
@@ -983,6 +996,8 @@ document.addEventListener('DOMContentLoaded', function() {
             showStatus('網路連線失敗', 'error');
             showInlineError(button, '網路連線失敗');
             button.disabled = false;
+        } finally {
+            learningBlueprintFetchInFlight.delete(videoId);
         }
     }
 
@@ -1295,6 +1310,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // startLearningBlueprint()'s shape but hits the /teach-back endpoint,
     // which requires a Learning Blueprint to already exist server-side.
     async function startTeachBack(videoId, button) {
+        if (teachBackFetchInFlight.has(videoId)) {
+            return;
+        }
+        teachBackFetchInFlight.add(videoId);
         button.disabled = true;
         clearInlineError(button);
         try {
@@ -1316,6 +1335,8 @@ document.addEventListener('DOMContentLoaded', function() {
             showStatus('網路連線失敗', 'error');
             showInlineError(button, '網路連線失敗');
             button.disabled = false;
+        } finally {
+            teachBackFetchInFlight.delete(videoId);
         }
     }
 
@@ -1462,6 +1483,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // startTeachBack()'s shape but hits the /action-list endpoint, which
     // requires a Learning Blueprint to already exist server-side.
     async function startActionList(videoId, button) {
+        if (actionListFetchInFlight.has(videoId)) {
+            return;
+        }
+        actionListFetchInFlight.add(videoId);
         button.disabled = true;
         clearInlineError(button);
         try {
@@ -1483,6 +1508,8 @@ document.addEventListener('DOMContentLoaded', function() {
             showStatus('網路連線失敗', 'error');
             showInlineError(button, '網路連線失敗');
             button.disabled = false;
+        } finally {
+            actionListFetchInFlight.delete(videoId);
         }
     }
 
@@ -1554,6 +1581,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // startActionList()'s shape but hits the /review endpoint, which
     // requires a Learning Blueprint to already exist server-side.
     async function startReview(videoId, button) {
+        if (reviewFetchInFlight.has(videoId)) {
+            return;
+        }
+        reviewFetchInFlight.add(videoId);
         button.disabled = true;
         clearInlineError(button);
         try {
@@ -1575,6 +1606,8 @@ document.addEventListener('DOMContentLoaded', function() {
             showStatus('網路連線失敗', 'error');
             showInlineError(button, '網路連線失敗');
             button.disabled = false;
+        } finally {
+            reviewFetchInFlight.delete(videoId);
         }
     }
 

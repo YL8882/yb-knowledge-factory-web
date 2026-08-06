@@ -1,3 +1,4 @@
+import asyncio
 import queue as pyqueue
 import shutil
 import tempfile
@@ -779,7 +780,8 @@ async def generate_knowledge_outline(video_id: str):
     transcript_body = study_note.extract_transcript_body(transcript_content)
 
     try:
-        body = gemini_client.generate_knowledge_outline(
+        body = await asyncio.to_thread(
+            gemini_client.generate_knowledge_outline,
             title=item["title"], url=item["url"], transcript_text=transcript_body
         )
     except gemini_client.GeminiConfigError as exc:
@@ -839,7 +841,8 @@ async def generate_learning_blueprint(video_id: str):
     transcript_body = study_note.extract_transcript_body(transcript_content)
 
     try:
-        data = gemini_client.generate_learning_blueprint(
+        data = await asyncio.to_thread(
+            gemini_client.generate_learning_blueprint,
             title=item["title"], url=item["url"], transcript_text=transcript_body
         )
     except gemini_client.GeminiConfigError as exc:
@@ -898,7 +901,9 @@ async def generate_teach_back(video_id: str):
     )
 
     try:
-        data = gemini_client.generate_teach_back(title=item["title"], blueprint_items=blueprint_items)
+        data = await asyncio.to_thread(
+            gemini_client.generate_teach_back, title=item["title"], blueprint_items=blueprint_items
+        )
     except gemini_client.GeminiConfigError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     except gemini_client.GeminiGenerationError as exc:
@@ -964,7 +969,9 @@ async def generate_action_list(video_id: str):
     )
 
     try:
-        data = gemini_client.generate_action_list(title=item["title"], blueprint_items=blueprint_items)
+        data = await asyncio.to_thread(
+            gemini_client.generate_action_list, title=item["title"], blueprint_items=blueprint_items
+        )
     except gemini_client.GeminiConfigError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     except gemini_client.GeminiGenerationError as exc:
@@ -1030,7 +1037,9 @@ async def generate_review(video_id: str):
     )
 
     try:
-        data = gemini_client.generate_review(title=item["title"], blueprint_items=blueprint_items)
+        data = await asyncio.to_thread(
+            gemini_client.generate_review, title=item["title"], blueprint_items=blueprint_items
+        )
     except gemini_client.GeminiConfigError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     except gemini_client.GeminiGenerationError as exc:

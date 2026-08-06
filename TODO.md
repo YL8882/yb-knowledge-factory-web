@@ -299,6 +299,18 @@ Priority／Development Order（Sprint 8 Proposal 確認）：P0（Task 1 Error P
 
 **過程記錄：** Proposal 階段研究發現，4 個模組後端已回傳分類過的錯誤訊息、前端失敗後按鈕也早已重新啟用（重試機制其實已存在），真正的落差（root cause）是 `showStatus()` 只寫入頁面唯一、非 sticky 的頂部 `#status`，Queue／History 列表較長時容易被使用者忽略。本次只修正這個 root cause，未重做已經正確的部分。Assistant 以 `node --check` 驗證語法，並對真實影片（`video_id=V6KgW35co8E`）呼叫 `POST /api/queue/{video_id}/teach-back` 確認 400 錯誤格式不受影響、無磁碟副作用；受限於本次環境沒有瀏覽器自動化工具，實際視覺／點擊確認（含使用者新增的 Retry 情境）由使用者於瀏覽器完成 Human Test，回報 PASS。
 
+### Task 3 — Loading／Processing 狀態一致化 ✅ Completed
+
+- [x] Rapid Learning／Learning Blueprint／Teach Back／Action List／Review 五個模組處理中皆顯示統一的 Loading 樣式（disabled＋「⏳ 處理中…」），取代原本只有半透明 disabled、按鈕文字不變的狀態
+- [x] 修正正確性落差：`renderQueue()` 每 1.5 秒輪詢重繪一次，先前手動點擊只把 `disabled` 設在被點擊的那個 DOM 節點上，若輪詢在請求進行中觸發重繪，該節點會被換成全新、未 disabled 的按鈕，使用者可能誤以為已恢復而再次點擊，造成同一影片同一模組被併發呼叫兩次 Gemini；改為讓每個模組共用既有的 `*FetchInFlight` Set（`knowledgeOutlineFetchInFlight`／`learningBlueprintFetchInFlight`／`teachBackFetchInFlight`／`actionListFetchInFlight`／`reviewFetchInFlight`），`renderQueue()` 重繪時依 Set 判斷是否仍在處理中，每次重繪都正確渲染 Loading 狀態
+- [x] 5 個 `startX()` 函式開頭加上與 Set 對應的早期 return，快速連點同一顆按鈕不會送出第二次請求
+- [x] Human Test 過程中發現一個獨立於本次範圍的 Bug：不同影片的手動觸發（例如影片 A 還在處理、點擊影片 B 的 Teach Back）不會立即開始，必須等影片 A 完成——RCA 確認這**不是** Sprint 4.1 既有的 Single Worker Queue 設計（那個機制只序列化 Transcript／Study Note 的自動生成，程式碼註解已明確記載這 5 個模組刻意不經過 `_pipeline_queue`／single worker thread）；真正原因是這 5 個端點宣告成 `async def`，但內部直接呼叫同步（blocking）的 Gemini SDK，卡住 uvicorn 唯一的事件迴圈，連帶讓所有其他請求（包含不同影片的獨立呼叫、`GET /api/queue` 輪詢）一起被卡住。使用者確認此為 Bug（違反既有設計意圖，非架構決策），指示併入 Task 3 以最小範圍修正：5 個端點的 Gemini 呼叫皆改為 `await asyncio.to_thread(gemini_client.generate_X, ...)`，不重構、不動 Queue 設計、不修改 `gemini_client.py`
+- [x] 修正後重新 Human Test：不同影片可同時處理不互相阻塞、Loading 狀態正常、無 Regression
+
+新增共用 `buildTriggerButton()` 取代 5 個模組各自重複的按鈕建立程式碼。僅修改 `app/static/script.js`（Loading 狀態）、`app/main.py`（新增 `import asyncio`，5 個端點的 Gemini 呼叫改為 `asyncio.to_thread`）。未修改 `app/gemini_client.py`、`app/static/style.css`（沿用既有 `:disabled` 樣式）、Queue 設計（`_pipeline_queue`／single worker thread 不變）、Stage Guard、Queue Store 寫入結構、History、Export、Chrome Extension。
+
+**過程記錄：** 第一輪 Human Test（正常情境／快速連點／既有功能迴歸）PASS，但「不同影片平行處理」FAIL——使用者主動要求先確認這是否為既有 Single Worker Queue 的預期設計，再決定修程式或改 Proposal。Assistant 讀 `main.py` 確認 `_pipeline_queue`／`_pipeline_worker_loop`（Sprint 4.1）只處理自動 Transcript／Study Note 流程，5 個 Learning Model 端點的既有程式碼註解本就明確寫著不經過這個 Queue，判定為 Bug 而非架構問題。使用者確認後指示併入 Task 3、限定最小修正範圍（不重構、不整理其他程式、不動 Queue 設計）。修正後重新 Human Test 三項（平行處理、Loading 狀態、Regression）皆 PASS。
+
 ---
 
 ## Acceptance

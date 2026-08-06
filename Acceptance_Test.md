@@ -397,9 +397,28 @@ Learning Blueprint／Teach Back／Action List／Review 四個模組呼叫 Gemini
 
 僅修改 `app/static/script.js`（新增 `showInlineError()`／`clearInlineError()`，套用到既有 4 個 `startX()` 函式）、`app/static/style.css`（新增 `.queue-item-inline-error` 樣式）。未修改 `app/main.py`、`app/error_messages.py`、Workflow、Stage Guard、Single Worker、Queue Store、History、Export、Chrome Extension。
 
+### Task 3 — Loading／Processing 狀態一致化
+
+Rapid Learning／Learning Blueprint／Teach Back／Action List／Review 五個模組處理中改為統一顯示 disabled＋「⏳ 處理中…」，並修正 `renderQueue()` 輪詢重繪期間會把處理中按鈕換成全新可點擊節點的問題（改用既有 `*FetchInFlight` Set 判斷）。Human Test 過程中另外發現並修正一個獨立 Bug：不同影片的手動觸發彼此會互相阻塞，RCA 確認非既有 Single Worker Queue 設計、而是 5 個端點內直接同步呼叫 Gemini SDK 卡住事件迴圈，經使用者確認後併入本次以最小範圍修正（`asyncio.to_thread`）。
+
+- [x] 正常情境：5 個模組正常成功產生內容，處理中顯示 Loading 文字，完成後畫面正常
+- [x] 快速連點同一顆按鈕：只送出一次 API，不會重複呼叫
+- [x] Loading 結束後完全復原：成功後按鈕連同 Loading 樣式一併被正式內容取代；失敗後按鈕恢復可點擊、無殘留 Loading 文字或永久 disabled
+- [x] 不同影片平行處理：影片 A 仍在處理中時，點擊影片 B 的 Teach Back／Action List／Review 可立即開始，不需等待影片 A 完成（第一輪 Human Test FAIL，修正 `asyncio.to_thread` 後重測 PASS）
+- [x] Retry：發生錯誤後可再次點擊、正常重新呼叫 API，行為與 Task 1 一致，未被本次改動破壞
+- [x] 迴歸：Transcript、Study Note、Queue、History、Download 等既有功能不受影響
+
+**Test Date:** 2026-08-06
+**Test Result:** PASS
+
+**過程記錄：** 第一輪 Human Test：正常情境／快速連點／既有功能迴歸 PASS，Retry 因本輪未發生錯誤而 Not Tested（維持 Task 1 已驗證的邏輯不變，同意暫不重測）；「不同影片平行處理」FAIL。使用者要求先確認是否為既有 Single Worker Queue（Sprint 4.1，僅序列化自動 Transcript／Study Note 流程）的預期設計再決定如何處理。Assistant 以程式碼（`_pipeline_queue`／`_pipeline_worker_loop` 的既有註解，明確記載 5 個 Learning Model 端點刻意不經過該 Queue）確認這是 Bug、不是架構問題：5 個端點雖宣告為 `async def`，內部卻直接呼叫同步 Gemini SDK，卡住 uvicorn 唯一的事件迴圈，使所有請求（含不同影片的獨立呼叫、Queue 輪詢）互相阻塞。使用者確認後指示併入 Task 3、限定最小修正範圍（不重構、不整理其他程式、不動 Queue 設計）；修正後重新 Human Test（平行處理、Loading 狀態、Regression）三項皆 PASS。
+
+僅修改 `app/static/script.js`（新增共用 `buildTriggerButton()`，5 個模組共用既有 `*FetchInFlight` Set）、`app/main.py`（新增 `import asyncio`，5 個端點的 Gemini 呼叫改為 `await asyncio.to_thread(...)`）。未修改 `app/gemini_client.py`、`app/static/style.css`、Queue 設計、Stage Guard、Queue Store 寫入結構、History、Export、Chrome Extension。
+
 ### Sprint Result
 
 - [x] Task 1 completed and accepted
+- [x] Task 3 completed and accepted
 
 ---
 
