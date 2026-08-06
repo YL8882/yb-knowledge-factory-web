@@ -311,6 +311,21 @@ Priority／Development Order（Sprint 8 Proposal 確認）：P0（Task 1 Error P
 
 **過程記錄：** 第一輪 Human Test（正常情境／快速連點／既有功能迴歸）PASS，但「不同影片平行處理」FAIL——使用者主動要求先確認這是否為既有 Single Worker Queue 的預期設計，再決定修程式或改 Proposal。Assistant 讀 `main.py` 確認 `_pipeline_queue`／`_pipeline_worker_loop`（Sprint 4.1）只處理自動 Transcript／Study Note 流程，5 個 Learning Model 端點的既有程式碼註解本就明確寫著不經過這個 Queue，判定為 Bug 而非架構問題。使用者確認後指示併入 Task 3、限定最小修正範圍（不重構、不整理其他程式、不動 Queue 設計）。修正後重新 Human Test 三項（平行處理、Loading 狀態、Regression）皆 PASS。
 
+### Task 2 — Queue Card 模組展開／收合 ✅ Completed
+
+範圍在 Proposal 階段兩度簡化：原始構想是 Accordion（一次只展開一個、自動收合前一個），使用者確認後改為單純獨立展開／收合，不做 Accordion、不做互斥、不做自動收合。
+
+- [x] 5 個模組（Rapid Learning／Learning Blueprint／Teach Back／Action List／Review）的標題列皆可點擊切換展開／收合，箭頭方向正確切換（▶ 收合／▲ 展開）
+- [x] 5 個模組各自獨立收合狀態，互不連動（收合 A 不影響 B／C／D／E），沒有 Accordion 互斥邏輯
+- [x] 預設維持展開（與 Task 2 之前的既有行為一致），只新增「可以收合」的能力
+- [x] Teach Back／Action List／Review 的下載按鈕移到收合區塊外面，收合狀態下仍可正常下載
+- [x] Rapid Learning 既有的「▶ 展開完整內容」內層 toggle（Sprint 7 Task 2）完全不變，這次只在外面多包一層模組層級的收合
+- [x] 收合後再次展開：內容正常顯示、不重新呼叫 API、不重新生成內容、不出現空白內容
+
+新增共用 `buildModuleToggleHeader()`，5 個模組各自一個獨立的「收合中」Set（`collapsedRapidLearningCards`／`collapsedLearningBlueprintCards`／`collapsedTeachBackCards`／`collapsedActionListCards`／`collapsedReviewCards`），比照既有 `expandedKnowledgeOutlineCards` 的跨輪詢重繪存活模式。僅修改 `app/static/script.js`（5 個 `buildXSection()` 改為標題＋可收合主體）、`app/static/style.css`（新增 `.rapid-learning-module-header`／`.rapid-learning-module-arrow`／`.rapid-learning-module-body.is-hidden`）。未修改任何後端、Task 1 inline 錯誤機制、Task 3 Loading／`buildTriggerButton()`、Queue／History／Export、Chrome Extension。
+
+**過程記錄：** Proposal 最初依你回饋的 UX Issue 規劃成 Accordion（一次一個、自動收合前一個），過程中額外釐清「Study Note」在 Queue Card 裡其實沒有行內展開區塊（只會自動下載，History 頁面的「開啟 Study Note」是另開新分頁），確認使用者所指其實是 Rapid Learning。提出 Accordion Proposal 後，使用者主動簡化需求，改為單純獨立展開／收合，理由是維持 MVP、避免過度設計；重新規劃並確認 Scope 後實作，Human Test 6 項（展開/收合、獨立 Toggle、收合後功能、Rapid Learning 迴歸、整體 Regression、再次展開）全數 PASS。
+
 ---
 
 ## Acceptance
@@ -356,3 +371,4 @@ Future versions only.
 - [ ] Learning Blueprint Error Path（`GeminiGenerationError` → HTTP 500）：重試策略、錯誤訊息與 UI 提示、是否自動重試。獨立 Bug Fix Task，不併入 Sprint 7 Task 3／4。發現於 Task 3／4 Human Test 期間（Assistant 短時間內連續呼叫約 15 次 Gemini API 做一致性驗證時觸發過一次，非常態重現）
 
   **需求：** 目前 Extension 僅支援 `https://www.youtube.com/watch?v=`，未支援 `https://www.youtube.com/shorts/`。Shorts 頁面需顯示 YB Learn 按鈕，點擊直接加入 Queue，不需手動貼網址，體驗與一般影片一致。
+- [ ] Queue Card 預設保持簡潔，只顯示一句話重點與學習入口，詳細內容預設收合、按需展開（Sprint 8 Task 2 Human Test 提出的 UX Improvement，非本次範圍）：5 個模組（Rapid Learning／Learning Blueprint／Teach Back／Action List／Review）預設收合，點擊後才展開。Task 2 已完成的是「可以收合」，這項是「預設就收合」，屬於後續獨立的 UX 決策，不併入 Task 2。

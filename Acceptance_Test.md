@@ -415,10 +415,29 @@ Rapid Learning／Learning Blueprint／Teach Back／Action List／Review 五個�
 
 僅修改 `app/static/script.js`（新增共用 `buildTriggerButton()`，5 個模組共用既有 `*FetchInFlight` Set）、`app/main.py`（新增 `import asyncio`，5 個端點的 Gemini 呼叫改為 `await asyncio.to_thread(...)`）。未修改 `app/gemini_client.py`、`app/static/style.css`、Queue 設計、Stage Guard、Queue Store 寫入結構、History、Export、Chrome Extension。
 
+### Task 2 — Queue Card 模組展開／收合
+
+5 個模組（Rapid Learning／Learning Blueprint／Teach Back／Action List／Review）的標題列改為可點擊，獨立切換展開／收合；不是 Accordion（沒有互斥、沒有自動收合前一個），各模組互不影響，預設維持展開（與既有行為一致）。
+
+- [x] 每個模組可獨立展開／收合，箭頭方向正確切換
+- [x] 收合 A 模組不影響 B／C／D／E 的展開狀態
+- [x] 收合狀態下 Teach Back／Action List／Review 仍可正常下載
+- [x] Rapid Learning 既有「展開完整內容」子層 toggle 行為不變
+- [x] 迴歸：Transcript、Study Note、Queue、History、Download 不受影響
+- [x] 收合後再次展開：內容正常顯示、未重新呼叫 API、未重新生成內容、未出現空白內容
+
+**Test Date:** 2026-08-06
+**Test Result:** PASS
+
+**過程記錄：** Proposal 最初依 UX Issue 規劃成 Accordion（一次只展開一個、自動收合前一個），過程中釐清使用者所指「Study Note」實際是 Rapid Learning（Queue Card 裡 Study Note 本身沒有行內展開區塊）；提出 Accordion Proposal 後，使用者主動簡化為單純獨立展開／收合，理由是維持 MVP、避免過度設計。Human Test 6 項全數 PASS。使用者另外提出一項未來 UX 建議（Queue Card 預設收合，只顯示 One Sentence＋學習入口按鈕），已記錄於 `TODO.md` Product Backlog，非本次範圍。
+
+僅修改 `app/static/script.js`（5 個 `buildXSection()` 改為標題＋可收合主體，新增共用 `buildModuleToggleHeader()` 與 5 個獨立的收合狀態 Set）、`app/static/style.css`（新增 Accordion Header／箭頭樣式）。未修改任何後端、Task 1 inline 錯誤機制、Task 3 Loading／`buildTriggerButton()`、Queue／History／Export、Chrome Extension。
+
 ### Sprint Result
 
 - [x] Task 1 completed and accepted
 - [x] Task 3 completed and accepted
+- [x] Task 2 completed and accepted
 
 ---
 

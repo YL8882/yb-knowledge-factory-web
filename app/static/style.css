@@ -673,6 +673,31 @@ main {
     margin: 2px 0;
 }
 
+/* Task 2 (Sprint 8): independent per-module collapse header — not an
+   accordion, each module toggles on its own. */
+.rapid-learning-module-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    border: none;
+    background: none;
+    padding: 2px 0;
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+}
+
+.rapid-learning-module-arrow {
+    flex-shrink: 0;
+    color: #7c3aed;
+    font-size: 0.75em;
+}
+
+.rapid-learning-module-body.is-hidden {
+    display: none;
+}
+
 .rapid-learning-content {
     font-size: 0.88em;
     color: #374151;

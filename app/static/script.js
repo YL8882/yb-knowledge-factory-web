@@ -82,6 +82,18 @@ document.addEventListener('DOMContentLoaded', function() {
     // expandedKnowledgeOutlineCards (Task 2).
     const revealedReviewAnswers = new Set();
 
+    // Task 2 (Sprint 8): independent collapse state per module per video —
+    // NOT an accordion (no mutual exclusion, no "only one open" rule; each
+    // Set below is its own module and doesn't touch the others). Defaults to
+    // expanded (empty Set) to match pre-Task-2 behavior; a card only appears
+    // here once the user actually collapses it, same persistence pattern as
+    // expandedKnowledgeOutlineCards above.
+    const collapsedRapidLearningCards = new Set();
+    const collapsedLearningBlueprintCards = new Set();
+    const collapsedTeachBackCards = new Set();
+    const collapsedActionListCards = new Set();
+    const collapsedReviewCards = new Set();
+
     // Remembered download folder (File System Access API, Chrome/Edge only). The handle
     // itself is persisted in IndexedDB so it survives a page reload; autoDownload() writes
     // straight into it once permission is confirmed, instead of prompting on every download.
@@ -1285,22 +1297,60 @@ document.addEventListener('DOMContentLoaded', function() {
     // matching renderer above; unrecognized structure_type falls back to the
     // generic bullet renderer (reads content.points if present, otherwise
     // renders nothing rather than crashing).
+    // Task 2 (Sprint 8): shared collapsible header for the module sections
+    // below — independent per module (no accordion, no mutual exclusion).
+    // Defaults to expanded (collapsedSet empty), matching pre-Task-2
+    // behavior; toggling is a pure class flip, same as the existing
+    // Rapid Learning "展開完整內容" toggle — never re-fetches or regenerates.
+    function buildModuleToggleHeader(icon, label, videoId, collapsedSet, bodyEl) {
+        const isCollapsed = collapsedSet.has(videoId);
+        bodyEl.classList.toggle('is-hidden', isCollapsed);
+
+        const header = document.createElement('button');
+        header.className = 'rapid-learning-module-header';
+        header.type = 'button';
+        const arrow = document.createElement('span');
+        arrow.className = 'rapid-learning-module-arrow';
+        arrow.textContent = isCollapsed ? '▶' : '▲';
+        const heading = document.createElement('span');
+        heading.className = 'rapid-learning-heading';
+        heading.textContent = icon + ' ' + label;
+        header.appendChild(arrow);
+        header.appendChild(heading);
+
+        header.addEventListener('click', function() {
+            const nowCollapsed = bodyEl.classList.toggle('is-hidden');
+            arrow.textContent = nowCollapsed ? '▶' : '▲';
+            if (nowCollapsed) {
+                collapsedSet.add(videoId);
+            } else {
+                collapsedSet.delete(videoId);
+            }
+        });
+
+        return header;
+    }
+
     function buildLearningBlueprintSection(videoId, data) {
         const section = document.createElement('div');
         section.className = 'rapid-learning-section';
 
         const block = document.createElement('div');
         block.className = 'rapid-learning-block';
-        const label = data.structure_label || data.structure_type || 'Learning Blueprint';
-        block.innerHTML =
-            '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>' +
-            '<div class="rapid-learning-heading">🗺️ Learning Blueprint（' + label + '）</div>' +
-            '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>';
+        block.innerHTML = '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>';
+
+        const body = document.createElement('div');
+        body.className = 'rapid-learning-module-body';
+        body.innerHTML = '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>';
 
         const renderer = KNOWLEDGE_STRUCTURE_RENDERERS[data.structure_type] || renderGenericStructure;
         const contentEl = renderer(data.content || {});
         contentEl.classList.add('rapid-learning-content');
-        block.appendChild(contentEl);
+        body.appendChild(contentEl);
+
+        const label = data.structure_label || data.structure_type || 'Learning Blueprint';
+        block.appendChild(buildModuleToggleHeader('🗺️', 'Learning Blueprint（' + label + '）', videoId, collapsedLearningBlueprintCards, body));
+        block.appendChild(body);
 
         section.appendChild(block);
         return section;
@@ -1460,15 +1510,20 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const block = document.createElement('div');
         block.className = 'rapid-learning-block';
-        block.innerHTML =
-            '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>' +
-            '<div class="rapid-learning-heading">📝 Teach Back</div>' +
-            '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>';
+        block.innerHTML = '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>';
+
+        const body = document.createElement('div');
+        body.className = 'rapid-learning-module-body';
+        body.innerHTML = '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>';
 
         (data.items || []).forEach(function(item, index) {
-            block.appendChild(buildTeachBackItem(index, item));
+            body.appendChild(buildTeachBackItem(index, item));
         });
 
+        block.appendChild(buildModuleToggleHeader('📝', 'Teach Back', videoId, collapsedTeachBackCards, body));
+        block.appendChild(body);
+
+        // Outside the collapsible body — download stays reachable without expanding.
         const downloadBtn = document.createElement('a');
         downloadBtn.className = 'queue-item-export teach-back-download';
         downloadBtn.href = '/api/queue/' + encodeURIComponent(videoId) + '/teach-back/download';
@@ -1547,10 +1602,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const block = document.createElement('div');
         block.className = 'rapid-learning-block';
-        block.innerHTML =
-            '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>' +
-            '<div class="rapid-learning-heading">✅ Action List</div>' +
-            '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>';
+        block.innerHTML = '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>';
+
+        const body = document.createElement('div');
+        body.className = 'rapid-learning-module-body';
+        body.innerHTML = '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>';
 
         const list = document.createElement('ul');
         list.className = 'teach-back-checklist action-list-items';
@@ -1565,7 +1621,10 @@ document.addEventListener('DOMContentLoaded', function() {
             li.appendChild(label);
             list.appendChild(li);
         });
-        block.appendChild(list);
+        body.appendChild(list);
+
+        block.appendChild(buildModuleToggleHeader('✅', 'Action List', videoId, collapsedActionListCards, body));
+        block.appendChild(body);
 
         const downloadBtn = document.createElement('a');
         downloadBtn.className = 'queue-item-export teach-back-download';
@@ -1707,40 +1766,41 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const block = document.createElement('div');
         block.className = 'rapid-learning-block';
-        block.innerHTML =
-            '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>' +
-            '<div class="rapid-learning-heading">🔄 Review（Active Recall）</div>' +
-            '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>';
+        block.innerHTML = '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>';
+
+        const body = document.createElement('div');
+        body.className = 'rapid-learning-module-body';
+        body.innerHTML = '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>';
 
         const oneSentence = data.one_sentence_recall;
         if (oneSentence) {
-            block.appendChild(buildReviewSubheading('One Sentence Recall'));
-            block.appendChild(buildRecallItem(videoId, 'one_sentence', 0, oneSentence.prompt, oneSentence.reference_answer));
+            body.appendChild(buildReviewSubheading('One Sentence Recall'));
+            body.appendChild(buildRecallItem(videoId, 'one_sentence', 0, oneSentence.prompt, oneSentence.reference_answer));
         }
 
         const recallQuestions = data.recall_questions || [];
         if (recallQuestions.length) {
-            block.appendChild(buildReviewSubheading('Recall Questions'));
+            body.appendChild(buildReviewSubheading('Recall Questions'));
             recallQuestions.forEach(function(q, index) {
-                block.appendChild(buildRecallItem(videoId, 'recall_question', index, q.prompt, q.reference_answer));
+                body.appendChild(buildRecallItem(videoId, 'recall_question', index, q.prompt, q.reference_answer));
             });
         }
 
         const workflowRecall = data.workflow_recall;
         if (workflowRecall) {
-            block.appendChild(buildReviewSubheading('Workflow Recall'));
-            block.appendChild(buildRecallItem(videoId, 'workflow', 0, workflowRecall.prompt, workflowRecall.reference_answer));
+            body.appendChild(buildReviewSubheading('Workflow Recall'));
+            body.appendChild(buildRecallItem(videoId, 'workflow', 0, workflowRecall.prompt, workflowRecall.reference_answer));
         }
 
         const blankFilling = data.blank_filling || [];
         if (blankFilling.length) {
-            block.appendChild(buildReviewSubheading('Blank Filling'));
+            body.appendChild(buildReviewSubheading('Blank Filling'));
             blankFilling.forEach(function(item, index) {
-                block.appendChild(buildRecallItem(videoId, 'blank_filling', index, item.prompt, item.answer));
+                body.appendChild(buildRecallItem(videoId, 'blank_filling', index, item.prompt, item.answer));
             });
         }
 
-        block.appendChild(buildReviewSubheading('Reflection'));
+        body.appendChild(buildReviewSubheading('Reflection'));
         const reflectionList = document.createElement('ul');
         reflectionList.className = 'teach-back-reflection';
         REVIEW_REFLECTION_QUESTIONS.forEach(function(question) {
@@ -1748,12 +1808,12 @@ document.addEventListener('DOMContentLoaded', function() {
             li.textContent = question;
             reflectionList.appendChild(li);
         });
-        block.appendChild(reflectionList);
+        body.appendChild(reflectionList);
 
         const selfScoreLabel = document.createElement('div');
         selfScoreLabel.className = 'teach-back-subheading';
         selfScoreLabel.textContent = 'Self Score';
-        block.appendChild(selfScoreLabel);
+        body.appendChild(selfScoreLabel);
 
         const selfScoreOptions = document.createElement('div');
         selfScoreOptions.className = 'review-self-score-options';
@@ -1763,7 +1823,10 @@ document.addEventListener('DOMContentLoaded', function() {
             span.textContent = option;
             selfScoreOptions.appendChild(span);
         });
-        block.appendChild(selfScoreOptions);
+        body.appendChild(selfScoreOptions);
+
+        block.appendChild(buildModuleToggleHeader('🔄', 'Review（Active Recall）', videoId, collapsedReviewCards, body));
+        block.appendChild(body);
 
         const downloadBtn = document.createElement('a');
         downloadBtn.className = 'queue-item-export teach-back-download';
@@ -1808,6 +1871,17 @@ document.addEventListener('DOMContentLoaded', function() {
         const section = document.createElement('div');
         section.className = 'rapid-learning-section';
 
+        const block = document.createElement('div');
+        block.className = 'rapid-learning-block';
+
+        // Task 2 (Sprint 8): outer module-level collapse, independent of and
+        // in addition to the "展開完整內容" toggle below (which keeps working
+        // exactly as before, nested inside this body). Collapsing the module
+        // hides the Quick Summary too — this is a new capability layered on
+        // top, not a change to what's shown by default (still expanded).
+        const body = document.createElement('div');
+        body.className = 'rapid-learning-module-body';
+
         const quickBlock = document.createElement('div');
         quickBlock.className = 'rapid-learning-block';
         quickBlock.innerHTML =
@@ -1836,7 +1910,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         quickBlock.appendChild(pointsList);
 
-        section.appendChild(quickBlock);
+        body.appendChild(quickBlock);
 
         const isExpanded = expandedKnowledgeOutlineCards.has(videoId);
 
@@ -1844,7 +1918,7 @@ document.addEventListener('DOMContentLoaded', function() {
         toggleBtn.className = 'rapid-learning-toggle';
         toggleBtn.type = 'button';
         toggleBtn.textContent = isExpanded ? '▲ 收合' : '▶ 展開完整內容';
-        section.appendChild(toggleBtn);
+        body.appendChild(toggleBtn);
 
         const outlineBlock = document.createElement('div');
         outlineBlock.className = 'rapid-learning-block rapid-learning-full' + (isExpanded ? '' : ' is-hidden');
@@ -1856,7 +1930,7 @@ document.addEventListener('DOMContentLoaded', function() {
         outlineText.className = 'rapid-learning-content';
         outlineText.textContent = parsed.knowledgeOutline;
         outlineBlock.appendChild(outlineText);
-        section.appendChild(outlineBlock);
+        body.appendChild(outlineBlock);
 
         // Pure UI toggle — no fetch, no re-render, just a class flip — so
         // expand/collapse never re-calls Gemini. State is also mirrored into
@@ -1871,6 +1945,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 expandedKnowledgeOutlineCards.delete(videoId);
             }
         });
+
+        block.appendChild(buildModuleToggleHeader('🧠', 'Rapid Learning', videoId, collapsedRapidLearningCards, body));
+        block.appendChild(body);
+        section.appendChild(block);
 
         return section;
     }
