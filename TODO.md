@@ -339,6 +339,52 @@ Priority／Development Order（Sprint 8 Proposal 確認）：P0（Task 1 Error P
 
 ---
 
+## Sprint 8.5A — Product Intelligence Foundation
+
+依 `docs/00_Project_Management/Engineering_Kickoff/Engineering_Kickoff_Sprint_8_5_Product_Intelligence.md` 與 Factory Standard `Product_Intelligence_Foundation_v1.0.md` 規劃。本 Sprint 不新增任何 AI 功能、不修改 UI／Prompt，純建立 Backend 可觀測性（Observability）。開發流程新增 Architecture Review 階段（Repository Analysis → Architecture Review → Implementation Plan → Coding），核准後才開始 Task 1。
+
+Engineering Rules（Task 1 核准時一併確認，全 Task 適用）：Backward Compatible（既有 MVP 流程不受影響）、Zero UI Changes、Feature Flag Friendly（`PRODUCT_INTELLIGENCE_ENABLED` 環境變數可整體關閉）、Observability 絕不可中斷正常流程（所有寫入皆 best-effort，失敗吞掉不拋出）。
+
+### Task 1 — Correlation ID 基礎建設 + Runtime Intelligence ✅ Completed
+
+- [x] `queue_store.add_item()` 產生 `request_id`（uuid4），鏡射進 `history_store.add_entry()`，供項目被移出 Queue 後仍可追溯
+- [x] 新增 `app/observability/`（`logger.py`／`runtime_metrics.py`／`daily_report.py`），JSONL 記錄 Queue／Transcript／Study Note／Download 四個階段的起訖時間與成功/失敗，寫入 `outputs/logs/runtime.jsonl`
+- [x] `daily_report.json` 每筆事件即時增量更新（非每日批次重算）
+
+**Test Date:** 2026-08-07　**Test Result:** PASS——同一支影片全流程共用同一組 `request_id`，不同影片各自產生不同 `request_id`，MVP 既有流程不受影響。
+
+### Task 2 — Cost Intelligence ✅ Completed
+
+- [x] `app/gemini_client.py` 建立單一攔截點 `_generate_content()`，涵蓋全部 7 個 `generate_*()` 函式，讀取 `response.usage_metadata`（含 `thoughts_token_count`）換算估算成本，寫入 `outputs/logs/gemini_usage.jsonl`
+- [x] `daily_report.json` 新增 `usage`（`api_calls`／`estimated_cost`／`by_model`／`by_artifact_type`）
+- [x] 追加：所有 `estimated_cost` 欄位皆補上 `"currency": "USD"`；新增 `study_package` 統計（只計入 `quick_summary` + `study_note` 兩個核心流程自動觸發的 Gemini 呼叫，於 Study Note 階段成功時結算，5 個選用 Learning Model 產出不計入）
+
+**Test Date:** 2026-08-07　**Test Result:** PASS——Token／估算成本記錄正確，Daily Report 正確彙總。
+
+### Task 3 — Cache Intelligence ✅ Completed
+
+- [x] 新增 `app/observability/cache_metrics.py`，於既有 7 處 `find_cached_*` 快取檢查點記錄 hit/miss，寫入 `outputs/logs/cache.jsonl`
+- [x] Estimated Cost Saved 優先採當天真實平均成本（`daily_report.average_cost_for_artifact_type()`），無資料時退回 `Cost_Analysis.md` 記載的 MVP 期間估算值當 fallback（會隨真實資料累積自動被取代，包含 Knowledge Outline 以外的其餘 4 個 Learning Model 產出，不需額外修改程式）
+- [x] `daily_report.json` 新增 `cache`（`hits`／`misses`／`hit_rate`／`estimated_cost_saved`／`by_artifact_type`）
+
+**Test Date:** 2026-08-07　**Test Result:** PASS——第一次執行為 MISS，重複執行變 HIT，Daily Report 快取統計正確。
+
+### Task 4 — Error Intelligence ✅ Completed
+
+- [x] 新增 `app/observability/error_metrics.py`；Gemini 相關失敗集中在 `gemini_client.py` 的 `_generate_content()` 記錄（涵蓋全部 7 種 artifact_type、含先前完全未記錄的 quick_summary 靜默失敗與 5 個獨立端點），非 Gemini 失敗（Download／Transcription／Worker 未預期例外／Study Note 非 Gemini 未預期例外）於既有 4 個 `last_error` 記錄點補上，避免與 Gemini 錯誤重複計數
+- [x] `retry_count` 於寫入當下即時查詢 `errors.jsonl`（同一 (video_id, stage) 今天已發生幾次），不新增 `queue_store` 欄位
+- [x] `daily_report.json` 新增 `errors`（`count`／`by_stage`）
+
+**Test Date:** 2026-08-07　**Test Result:** PASS。使用者確認不另外進行 API Key 移除等 Developer 層級測試，建議未來以自動化測試覆蓋 Exception 路徑（見下方 Product Backlog）。
+
+**端對端驗證：** 挑選真實處理過的影片（`5o4OsLjINuQ`），確認同一組 `request_id` 完整串接 Runtime（Queue→Transcript→Study Note→Download）、Gemini Usage（quick_summary／study_note／knowledge_outline）、Cache（miss→hit）三份 log 與 `daily_report.json`，全部一致。
+
+**Sprint 8.5A（Product Intelligence Foundation）全部完成：Task 1～4。**
+
+僅修改 `app/gemini_client.py`／`app/queue_store.py`／`app/history_store.py`／`app/main.py`，新增 `app/observability/`（`logger.py`／`runtime_metrics.py`／`cost_metrics.py`／`cache_metrics.py`／`error_metrics.py`／`daily_report.py`）。未修改任何 UI（`templates/`／`static/`）、任何 Prompt 內容、既有 API 回傳格式。
+
+---
+
 ## Acceptance
 
 - [ ] Complete end-to-end workflow
@@ -384,4 +430,8 @@ Future versions only.
 - [ ] Queue Card 預設保持簡潔，只顯示一句話重點與學習入口，詳細內容預設收合、按需展開（Sprint 8 Task 2 Human Test 提出的 UX Improvement，非本次範圍）：5 個模組（Rapid Learning／Learning Blueprint／Teach Back／Action List／Review）預設收合，點擊後才展開。Task 2 已完成的是「可以收合」，這項是「預設就收合」，屬於後續獨立的 UX 決策，不併入 Task 2。
 - [ ] 字幕下載 429 被靜默吞掉，Whisper fallback 也失敗時顯示誤導訊息（Sprint 8 Task 4 Human Test 發現的真實案例，非本次範圍）：`main.py:260-263` 的 `fetch_subtitle_transcript()` 失敗（例如字幕下載遭 YouTube 429 Rate Limit）目前完全靜默吞掉錯誤文字、直接 fallback 到音訊下載＋本機 Whisper；若 fallback 也沒能產生內容（`TranscriptionError("empty transcript")`），使用者看到的是「找不到可用的逐字稿內容」，看不出真正原因其實是字幕下載被暫時限流（Retry 後即成功）。修正需要同時改 `app/main.py`（記住字幕下載失敗的原始錯誤文字，不再直接丟棄；Whisper fallback 也失敗時優先用這段文字分類）與 `app/error_messages.py`（新增字幕＋429／rate limit 的專屬分類，回傳「YouTube 暫時限制字幕下載，請稍後再試。」），超出 Task 4 原訂只改 `error_messages.py` 的範圍，故列入 Backlog 待後續獨立處理。
 - [ ] Structure Detection 一致性改善（Sprint 8 Task 5，決定延後）：同一支內容特徵模糊的影片，重複生成 Learning Blueprint 可能得到不同 `structure_type`（`temperature=0` 已改善但未完全消除）。Proposal 已規劃修法（`_LEARNING_BLUEPRINT_SYSTEM_INSTRUCTION` 新增判斷優先順序規則），但審閱後判定：目前沒有可穩定重現的不一致案例，無法建立 Before／After 比較、無法定義明確 PASS／FAIL，不符合「可驗收的 Bug 優先」原則。**觸發條件：** 等之後再次遇到真實的 `structure_type` 判斷不一致案例（記錄下該案例的影片與兩次不同的判斷結果），再依該案例修正與驗收，不要在沒有真實案例時純靠猜測調整 Prompt。
-- [ ] Sprint 8.5（Beta Polish，待 Sprint 8 完成後決定是否排入）：Queue Card 資訊層級預設簡潔化（見上方「Queue Card 預設保持簡潔」項）、學習入口依學習時間排序、其他 Beta 實際使用過程中發現的 UX 細節。屬於產品體驗優化，不影響 Sprint 8「穩定性優先」的目標，Sprint 8 Integration Test 通過後再確認是否成立。
+- [ ] Beta Polish（原暫稱「Sprint 8.5」，因與 Product Intelligence Foundation 的 Sprint 8.5A 撞號，改為未排定 Sprint 編號的 Backlog 項目）：Queue Card 資訊層級預設簡潔化（見上方「Queue Card 預設保持簡潔」項）、學習入口依學習時間排序、其他 Beta 實際使用過程中發現的 UX 細節。屬於產品體驗優化，待評估排入哪個 Sprint。
+- [ ] Sprint 8.5B — Visualization Layer（Engineering Kickoff Sprint 8.5 文件第 16 節已定義）：Runtime Dashboard／Cost Dashboard／Product Dashboard，完成 Product Intelligence Foundation 第二階段。待 Sprint 8.5A 統一 Push 後由使用者決定是否排入。
+- [ ] 使用者輸入驗證失敗未被記錄（Sprint 8.5A Task 4 Human Test 期間使用者提出，Product Analytics 範疇，非 Error Intelligence 必備）：`POST /api/queue` 的 `InvalidYouTubeURLError`／`VideoMetadataError` 兩個拒絕點都在 `queue_store.add_item()`（產生 `request_id`）之前就以 `HTTPException` 擋掉，目前完全不會產生任何 Runtime／Error 紀錄，因此無法得知有多少使用者因輸入格式錯誤而失敗。若要補上，建議新增獨立的 `validation` 統計（例如 `invalid_url`／`unsupported_video`），不要併入 Runtime Error 統計以免混淆「系統執行失敗」與「使用者輸入錯誤」兩種不同性質的事件。
+- [ ] `GeminiConfigError`（缺少 `GEMINI_API_KEY`）未被 Error Intelligence 記錄（Sprint 8.5A Task 4 Known Limitation）：發生在 `gemini_client._generate_content()` 攔截點「之前」，屬一次性環境設定問題而非執行期錯誤，Task 4 判斷優先度較低，先不處理。
+- [ ] 5 個獨立 Learning Model 端點（Knowledge Outline／Learning Blueprint／Teach Back／Action List／Review）若因非 Gemini 原因失敗，目前沒有既有的 `last_error` 記錄點可掛 Error Intelligence（Sprint 8.5A Task 4 Known Limitation），維持原狀。

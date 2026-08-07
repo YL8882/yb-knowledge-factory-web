@@ -1,4 +1,5 @@
 import json
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -75,6 +76,12 @@ def add_item(video_id: str, title: str, url: str) -> dict:
         "url": url,
         "status": "Queued",
         "created_at": datetime.now(timezone.utc).isoformat(),
+        # Correlation ID (Sprint 8.5A): shared by every Product Intelligence
+        # event for this processing run — Queue, Transcript, Gemini, Study
+        # Note, Download — so they can all be traced back to one journey.
+        # Mirrored into history_store.add_entry() so it's still resolvable
+        # after the item is removed from this (ephemeral) queue.
+        "request_id": str(uuid.uuid4()),
     }
     _queue.append(item)
     _save_queue()

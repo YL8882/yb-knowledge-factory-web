@@ -25,15 +25,22 @@ def _load_history() -> list[dict]:
 _history: list[dict] = _load_history()
 
 
-def add_entry(video_id: str, title: str, url: str) -> None:
+def add_entry(video_id: str, title: str, url: str, request_id: str | None = None) -> None:
     """Records that a video was processed, independent of the (ephemeral) Queue —
     an item stays in history even after the user deletes it from the Queue to free
     up staging-area space, so it can still be traced back to the YB channel later.
+
+    request_id (Sprint 8.5A, optional for backward compatibility): mirrors the
+    Correlation ID queue_store.add_item() generated for this run, so Product
+    Intelligence's Download-stage logging can still resolve it via History
+    after the item is removed from the Queue. Always overwritten on a repeat
+    call, same as title/url, since a repeat add starts a new processing run.
     """
     for entry in _history:
         if entry["video_id"] == video_id:
             entry["title"] = title
             entry["url"] = url
+            entry["request_id"] = request_id
             _write_history_file(_history)
             return
 
@@ -43,6 +50,7 @@ def add_entry(video_id: str, title: str, url: str) -> None:
             "title": title,
             "url": url,
             "added_at": datetime.now(timezone.utc).isoformat(),
+            "request_id": request_id,
         }
     )
     _write_history_file(_history)

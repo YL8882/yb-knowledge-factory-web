@@ -488,6 +488,91 @@ HTTP Error 429: Too Many Requests
 
 ---
 
+## Sprint 8.5A — Product Intelligence Foundation
+
+依 Engineering Kickoff Sprint 8.5（Product Intelligence Foundation）與 Factory Standard 規劃，純 Backend 可觀測性，不修改 UI／Prompt／既有 API 回傳格式。
+
+### Task 1 — Correlation ID 基礎建設 + Runtime Intelligence
+
+`queue_store.add_item()` 產生 `request_id`（uuid4）並鏡射進 `history_store`；新增 `app/observability/logger.py`／`runtime_metrics.py`／`daily_report.py`，記錄 Queue／Transcript／Study Note／Download 四階段起訖與成功/失敗至 `outputs/logs/runtime.jsonl`，即時增量更新 `outputs/reports/daily_report.json`。
+
+- [x] 正常情境：完整跑一次 YouTube → Transcript → Study Note → Download，MVP 行為與之前完全一致
+- [x] `outputs/queue.json` 該筆項目出現 `request_id` 欄位
+- [x] `outputs/logs/runtime.jsonl` 出現該影片多筆紀錄（`queue`／`transcript`／`study_note`／`download`），`request_id` 全部一致
+- [x] 不同影片各自產生不同的 `request_id`
+- [x] `outputs/reports/daily_report.json` 的 `transcript_generated`／`study_notes_generated`／`runtime` 數字正確累加
+
+**Test Date:** 2026-08-07　**Test Result:** PASS
+
+**過程記錄：** 使用者於 Human Test 中觀察到 Download 動作目前會產生大量 Runtime 事件（同一支影片多次下載即多筆紀錄），確認這不是 Bug、暫時維持現行行為，留待 Sprint 8.5A 全部完成後再一併檢討 Download 應歸類為 Runtime Event 或 User Action，不在開發中途調整架構。
+
+僅修改 `app/queue_store.py`（`add_item()` 產生 `request_id`）、`app/history_store.py`（`add_entry()` 鏡射 `request_id`）、`app/main.py`（4 處插入計時），新增 `app/observability/`。未修改 UI、Prompt、`app/gemini_client.py`。
+
+### Task 2 — Cost Intelligence
+
+`app/gemini_client.py` 新增共用攔截點 `_generate_content()`，涵蓋全部 7 個 `generate_*()` 函式，讀取 `response.usage_metadata` 換算估算成本，寫入 `outputs/logs/gemini_usage.jsonl`，`daily_report.json` 新增 `usage` 區塊。
+
+- [x] 正常情境：MVP 行為與之前完全一致
+- [x] `outputs/logs/gemini_usage.jsonl` 出現對應紀錄，`request_id` 與 `runtime.jsonl` 一致
+- [x] `input_tokens`／`output_tokens`／`estimated_cost` 數值合理
+- [x] `outputs/reports/daily_report.json` 新增 `usage` 區塊，`api_calls`／`estimated_cost` 正確累加
+- [x] 追加：`estimated_cost` 出現處皆帶 `"currency": "USD"`
+- [x] 追加：`daily_report.json` 新增 `study_package`（`count`／`total_cost`／`average_cost`），只計入 `quick_summary` + `study_note`
+
+**Test Date:** 2026-08-07　**Test Result:** PASS
+
+**過程記錄：** 使用者觀察到 Knowledge Outline 的快取估算成本已自動改用真實數值，確認這是 `average_cost_for_artifact_type()` 的通用邏輯（任何 artifact_type 只要當天有一筆真實用量即自動套用），非針對 Knowledge Outline 額外處理，Learning Blueprint／Teach Back／Action List／Review 也會在各自第一次真實呼叫後自動生效，不需要額外修改程式。
+
+僅修改 `app/gemini_client.py`（新增 `_generate_content()`，7 個函式加 `request_id`／`video_id`）、`app/main.py`（9 處呼叫點）、`app/observability/daily_report.py`／`logger.py`，新增 `app/observability/cost_metrics.py`。
+
+### Task 3 — Cache Intelligence
+
+新增 `app/observability/cache_metrics.py`，於既有 7 處 `find_cached_*` 快取檢查點記錄 hit/miss 至 `outputs/logs/cache.jsonl`，`daily_report.json` 新增 `cache` 區塊。
+
+- [x] 對已產生過 Study Note 的影片重複觸發：MVP 行為與之前完全一致
+- [x] 第一次執行（無快取）：`result` 為 `miss`
+- [x] 重複執行（有快取）：`result` 為 `hit`
+- [x] `outputs/logs/cache.jsonl` 的 `request_id` 與同一支影片的 `runtime.jsonl`／`gemini_usage.jsonl` 一致
+- [x] `outputs/reports/daily_report.json` 的 `cache.hit_rate`（0～1 之間）、`estimated_cost_saved` 正確
+
+**Test Date:** 2026-08-07　**Test Result:** PASS
+
+僅修改 `app/main.py`（7 處快取檢查點）、`app/observability/daily_report.py`／`logger.py`，新增 `app/observability/cache_metrics.py`。
+
+### Task 4 — Error Intelligence
+
+新增 `app/observability/error_metrics.py`；Gemini 相關失敗集中在 `_generate_content()` 記錄，非 Gemini 失敗（Download／Transcription／Worker／Study Note 未預期例外）於既有 4 個 `last_error` 記錄點補上，`daily_report.json` 新增 `errors` 區塊。
+
+- [x] 正常情境：MVP 行為與之前完全一致
+- [x] `outputs/reports/daily_report.json` 的 `errors.count`／`by_stage` 正確累加
+
+**Test Date:** 2026-08-07　**Test Result:** PASS
+
+**過程記錄：** 使用者確認不進行移除 `GEMINI_API_KEY` 等 Developer 層級的人工故障注入測試，Exception 路徑的完整覆蓋建議改由未來的自動化／單元測試負責，本次 Human Test 聚焦於「正常流程不受影響」與「Daily Report 統計正確」兩項。過程中使用者另外指出 `POST /api/queue` 的無效網址／找不到影片這兩個拒絕點發生在 `request_id` 產生之前，完全不會留下任何紀錄——確認為真實現象、非本次範圍，已記錄於 `TODO.md` Product Backlog（Product Analytics 範疇，非 Error Intelligence 必備）。
+
+僅修改 `app/gemini_client.py`（`_generate_content()` 記錄失敗）、`app/main.py`（4 處既有 `last_error` 記錄點）、`app/observability/daily_report.py`／`logger.py`，新增 `app/observability/error_metrics.py`。
+
+### End-to-End Validation
+
+挑選真實處理過的影片（`video_id=5o4OsLjINuQ`），追蹤同一組 `request_id` 是否完整串起 4 份 log 與 `daily_report.json`。
+
+- [x] `runtime.jsonl`：`queue`／`transcript`／`download`／`study_note`／`download`……各階段皆帶同一 `request_id`
+- [x] `gemini_usage.jsonl`：`quick_summary`／`study_note`／`knowledge_outline` 三筆皆帶同一 `request_id`
+- [x] `cache.jsonl`：`knowledge_outline` 由 `miss` 到之後多次 `hit`，皆帶同一 `request_id`
+- [x] `daily_report.json` 的 `runtime`／`usage`／`cache`／`study_package` 數字與上述原始紀錄一致
+
+**Test Date:** 2026-08-07　**Test Result:** PASS
+
+### Sprint Result
+
+- [x] Task 1 completed and accepted
+- [x] Task 2 completed and accepted
+- [x] Task 3 completed and accepted
+- [x] Task 4 completed and accepted
+- [x] End-to-End Validation completed and accepted
+
+---
+
 # MVP Acceptance
 
 The Lite MVP is complete when:

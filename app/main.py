@@ -3,6 +3,7 @@ import queue as pyqueue
 import shutil
 import tempfile
 import threading
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -26,6 +27,7 @@ import study_note
 import teach_back
 import transcript as transcript_service
 import youtube
+from observability import cache_metrics, error_metrics, runtime_metrics
 
 load_dotenv()
 
@@ -145,7 +147,11 @@ async def add_to_queue(request: AddVideoRequest):
 
     # Recorded independently of the (ephemeral) Queue so it's still traceable back
     # to the YB channel after the user deletes it from the Queue to free up space.
-    history_store.add_entry(video_id=video_id, title=metadata["title"], url=request.url.strip())
+    # request_id mirrored from the Queue item (Sprint 8.5A Correlation ID).
+    history_store.add_entry(
+        video_id=video_id, title=metadata["title"], url=request.url.strip(),
+        request_id=item.get("request_id"),
+    )
 
     # Auto-start: added items join the single sequential pipeline queue immediately
     # (see _enqueue_for_processing below) instead of waiting for a manual click.
@@ -187,6 +193,31 @@ def _stage_rank(status: str) -> int:
 
 
 def _generate_transcript_for_item(video_id: str) -> dict:
+    """Runtime Intelligence wrapper (Sprint 8.5A Task 1): times the whole
+    Transcript stage (including an idempotent Stage-Guard repeat call, which
+    still counts as a real "transcript" event, just a near-zero-duration one)
+    and logs it via runtime_metrics — the actual pipeline logic is unchanged,
+    just moved into _do_generate_transcript_for_item() below.
+    """
+    item = queue_store.get_item(video_id)
+    request_id = item.get("request_id")
+    stage_start = datetime.now(timezone.utc)
+    try:
+        result = _do_generate_transcript_for_item(video_id)
+    except Exception:
+        runtime_metrics.log_stage(
+            request_id=request_id, video_id=video_id, stage="transcript",
+            start_time=stage_start, end_time=datetime.now(timezone.utc), status="error",
+        )
+        raise
+    runtime_metrics.log_stage(
+        request_id=request_id, video_id=video_id, stage="transcript",
+        start_time=stage_start, end_time=datetime.now(timezone.utc), status="success",
+    )
+    return result
+
+
+def _do_generate_transcript_for_item(video_id: str) -> dict:
     item = queue_store.get_item(video_id)
 
     # Stage Guard: Transcript already reached or passed — return the existing
@@ -207,6 +238,13 @@ def _generate_transcript_for_item(video_id: str) -> dict:
     # item is processed in the current session (no transcript_path yet).
     if not item.get("transcript_path"):
         cached_transcript_path = transcript_service.find_cached_transcript(video_id)
+
+        # Cache Intelligence (Sprint 8.5A Task 3).
+        cache_metrics.log_cache_event(
+            request_id=item.get("request_id"), video_id=video_id,
+            artifact_type="transcript", hit=cached_transcript_path is not None,
+        )
+
         if cached_transcript_path:
             text = cached_transcript_path.read_text(encoding="utf-8")
 
@@ -221,6 +259,7 @@ def _generate_transcript_for_item(video_id: str) -> dict:
                         title=item["title"],
                         url=item["url"],
                         transcript_text=study_note.extract_transcript_body(text),
+                        request_id=item.get("request_id"), video_id=video_id,
                     )
                 except (gemini_client.GeminiConfigError, gemini_client.GeminiGenerationError):
                     summary = ""
@@ -241,6 +280,19 @@ def _generate_transcript_for_item(video_id: str) -> dict:
             if cached_study_note_path:
                 fields["status"] = "Study Note Ready"
                 fields["study_note_path"] = str(cached_study_note_path)
+
+                # Cache Intelligence (Sprint 8.5A Task 3): a hit here means
+                # _do_generate_study_note()'s own cache check below is never
+                # reached at all (Stage Guard short-circuits it), so this is
+                # the only place this hit would ever be recorded. Misses are
+                # deliberately NOT logged here — the authoritative miss for
+                # "study_note" is _do_generate_study_note()'s own check,
+                # reached moments later for every video that misses here, so
+                # logging both would double-count the same miss.
+                cache_metrics.log_cache_event(
+                    request_id=item.get("request_id"), video_id=video_id,
+                    artifact_type="study_note", hit=True,
+                )
 
             queue_store.update_item(video_id, **fields)
 
@@ -265,7 +317,8 @@ def _generate_transcript_for_item(video_id: str) -> dict:
     if subtitle_text:
         try:
             summary = gemini_client.generate_quick_summary(
-                title=item["title"], url=item["url"], transcript_text=subtitle_text
+                title=item["title"], url=item["url"], transcript_text=subtitle_text,
+                request_id=item.get("request_id"), video_id=video_id,
             )
         except (gemini_client.GeminiConfigError, gemini_client.GeminiGenerationError):
             summary = ""
@@ -324,6 +377,10 @@ def _generate_transcript_for_item(video_id: str) -> dict:
                 progress_percent=None,
                 eta_seconds=None,
             )
+            error_metrics.log_error(
+                request_id=item.get("request_id"), video_id=video_id, stage="download",
+                exception=f"AudioDownloadError: {exc}",
+            )
             raise TranscriptGenerationError(str(exc)) from exc
 
         queue_store.update_item(video_id, status="Transcribing", progress_percent=None, eta_seconds=None)
@@ -339,6 +396,10 @@ def _generate_transcript_for_item(video_id: str) -> dict:
                 progress_percent=None,
                 eta_seconds=None,
             )
+            error_metrics.log_error(
+                request_id=item.get("request_id"), video_id=video_id, stage="transcript",
+                exception=f"TranscriptionError: {exc}",
+            )
             raise TranscriptGenerationError(str(exc)) from exc
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -351,7 +412,8 @@ def _generate_transcript_for_item(video_id: str) -> dict:
     # back out instead of calling Gemini again.
     try:
         summary = gemini_client.generate_quick_summary(
-            title=item["title"], url=item["url"], transcript_text=text
+            title=item["title"], url=item["url"], transcript_text=text,
+            request_id=item.get("request_id"), video_id=video_id,
         )
     except (gemini_client.GeminiConfigError, gemini_client.GeminiGenerationError):
         summary = ""
@@ -390,10 +452,25 @@ def _generate_study_note_for_item(video_id: str) -> dict:
     _auto_generate_transcript()'s `except StudyNoteGenerationError: pass`, leaving
     the item frozen at "Transcript Ready" forever with zero trace of what
     happened (the bug that caused the stuck-Job investigation).
+
+    Also times the whole Study Note stage for Runtime Intelligence
+    (Sprint 8.5A Task 1) — same request_id as the Transcript stage that
+    preceded it, since both are read from the same queue_store item.
     """
+    item = queue_store.get_item(video_id)
+    request_id = item.get("request_id")
+    stage_start = datetime.now(timezone.utc)
+
+    def _log(status: str) -> None:
+        runtime_metrics.log_stage(
+            request_id=request_id, video_id=video_id, stage="study_note",
+            start_time=stage_start, end_time=datetime.now(timezone.utc), status=status,
+        )
+
     try:
-        return _do_generate_study_note(video_id)
+        result = _do_generate_study_note(video_id)
     except StudyNoteGenerationError:
+        _log("error")
         raise
     except Exception as exc:
         # Genuinely unexpected — not one of the specific error types
@@ -406,7 +483,14 @@ def _generate_study_note_for_item(video_id: str) -> dict:
             last_error="未預期錯誤（" + type(exc).__name__ + "）：" + str(exc),
             last_error_stage="studynote",
         )
+        error_metrics.log_error(
+            request_id=request_id, video_id=video_id, stage="study_note",
+            exception=f"{type(exc).__name__}: {exc}",
+        )
+        _log("error")
         raise StudyNoteGenerationError(str(exc)) from exc
+    _log("success")
+    return result
 
 
 def _do_generate_study_note(video_id: str) -> dict:
@@ -447,6 +531,16 @@ def _do_generate_study_note(video_id: str) -> dict:
     # on this queue item yet (e.g. queue.json was reset but outputs/ wasn't).
     if not item.get("study_note_path"):
         cached_study_note_path = study_note.find_cached_study_note(video_id)
+
+        # Cache Intelligence (Sprint 8.5A Task 3): the authoritative
+        # hit/miss check for "study_note" — see the comment at the earlier
+        # opportunistic check in _do_generate_transcript_for_item() for why
+        # that one only logs hits, never misses.
+        cache_metrics.log_cache_event(
+            request_id=item.get("request_id"), video_id=video_id,
+            artifact_type="study_note", hit=cached_study_note_path is not None,
+        )
+
         if cached_study_note_path:
             queue_store.update_item(
                 video_id,
@@ -466,7 +560,8 @@ def _do_generate_study_note(video_id: str) -> dict:
 
     try:
         body = gemini_client.generate_study_note(
-            title=item["title"], url=item["url"], transcript_text=transcript_body
+            title=item["title"], url=item["url"], transcript_text=transcript_body,
+            request_id=item.get("request_id"), video_id=video_id,
         )
     except gemini_client.GeminiConfigError as exc:
         queue_store.update_item(
@@ -541,7 +636,7 @@ def _retry_study_note_only(video_id: str) -> None:
 # off several concurrent background tasks (FastAPI's BackgroundTasks run on the
 # thread pool, not serialized), which would contend over the single Whisper model
 # instance and violate the single-user/non-concurrent design.
-_pipeline_queue: "pyqueue.Queue[tuple[str, str]]" = pyqueue.Queue()
+_pipeline_queue: "pyqueue.Queue[tuple[str, str, datetime]]" = pyqueue.Queue()
 _worker_started = False
 _worker_start_lock = threading.Lock()
 
@@ -586,7 +681,22 @@ def _await_job(video_id: str, kind: str, timeout: float = 600.0):
 
 def _pipeline_worker_loop() -> None:
     while True:
-        video_id, kind = _pipeline_queue.get()
+        video_id, kind, enqueued_at = _pipeline_queue.get()
+
+        # Runtime Intelligence (Sprint 8.5A Task 1): "queue" stage — how long
+        # this job actually waited on _pipeline_queue before a worker picked
+        # it up. Best-effort: an item removed from queue_store between being
+        # enqueued and being picked up (e.g. user deleted it) is skipped
+        # silently rather than failing the job.
+        try:
+            _item = queue_store.get_item(video_id)
+            runtime_metrics.log_stage(
+                request_id=_item.get("request_id"), video_id=video_id, stage="queue",
+                start_time=enqueued_at, end_time=datetime.now(timezone.utc), status="success",
+            )
+        except Exception:
+            pass
+
         try:
             if kind == "study_note_only":
                 _retry_study_note_only(video_id)
@@ -623,11 +733,20 @@ def _pipeline_worker_loop() -> None:
             # afterward sits in _pipeline_queue forever with nothing consuming
             # it, until the process is restarted. Best-effort record it on the
             # item so it isn't silently invisible in the UI either.
+            error_stage = "study_note" if kind == "study_note_only" else "transcript"
             try:
                 queue_store.update_item(
                     video_id,
                     last_error="Worker 發生未預期錯誤（" + type(exc).__name__ + "）：" + str(exc),
                     last_error_stage="studynote" if kind == "study_note_only" else "transcript",
+                )
+            except Exception:
+                pass
+            try:
+                error_metrics.log_error(
+                    request_id=queue_store.get_item(video_id).get("request_id"),
+                    video_id=video_id, stage=error_stage,
+                    exception=f"Worker: {type(exc).__name__}: {exc}",
                 )
             except Exception:
                 pass
@@ -641,7 +760,7 @@ def _enqueue_for_processing(video_id: str, kind: str = "full") -> None:
         if not _worker_started:
             threading.Thread(target=_pipeline_worker_loop, daemon=True, name="ybkf-pipeline-worker").start()
             _worker_started = True
-    _pipeline_queue.put((video_id, kind))
+    _pipeline_queue.put((video_id, kind, datetime.now(timezone.utc)))
 
 
 @app.on_event("startup")
@@ -765,6 +884,10 @@ async def generate_knowledge_outline(video_id: str):
     # spend) if this has already been generated for this video_id — same
     # find_cached_* pattern Transcript/Study Note already use.
     cached_path = knowledge_outline.find_cached_knowledge_outline(video_id)
+    cache_metrics.log_cache_event(
+        request_id=item.get("request_id"), video_id=video_id,
+        artifact_type="knowledge_outline", hit=cached_path is not None,
+    )
     if cached_path:
         return {
             "video_id": video_id,
@@ -782,7 +905,8 @@ async def generate_knowledge_outline(video_id: str):
     try:
         body = await asyncio.to_thread(
             gemini_client.generate_knowledge_outline,
-            title=item["title"], url=item["url"], transcript_text=transcript_body
+            title=item["title"], url=item["url"], transcript_text=transcript_body,
+            request_id=item.get("request_id"), video_id=video_id,
         )
     except gemini_client.GeminiConfigError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -826,6 +950,10 @@ async def generate_learning_blueprint(video_id: str):
         raise HTTPException(status_code=404, detail="項目不存在")
 
     cached_path = learning_blueprint.find_cached_learning_blueprint(video_id)
+    cache_metrics.log_cache_event(
+        request_id=item.get("request_id"), video_id=video_id,
+        artifact_type="learning_blueprint", hit=cached_path is not None,
+    )
     if cached_path:
         return {
             "video_id": video_id,
@@ -843,7 +971,8 @@ async def generate_learning_blueprint(video_id: str):
     try:
         data = await asyncio.to_thread(
             gemini_client.generate_learning_blueprint,
-            title=item["title"], url=item["url"], transcript_text=transcript_body
+            title=item["title"], url=item["url"], transcript_text=transcript_body,
+            request_id=item.get("request_id"), video_id=video_id,
         )
     except gemini_client.GeminiConfigError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -884,6 +1013,10 @@ async def generate_teach_back(video_id: str):
         raise HTTPException(status_code=404, detail="項目不存在")
 
     cached_path = teach_back.find_cached_teach_back(video_id)
+    cache_metrics.log_cache_event(
+        request_id=item.get("request_id"), video_id=video_id,
+        artifact_type="teach_back", hit=cached_path is not None,
+    )
     if cached_path:
         return {
             "video_id": video_id,
@@ -902,7 +1035,8 @@ async def generate_teach_back(video_id: str):
 
     try:
         data = await asyncio.to_thread(
-            gemini_client.generate_teach_back, title=item["title"], blueprint_items=blueprint_items
+            gemini_client.generate_teach_back, title=item["title"], blueprint_items=blueprint_items,
+            request_id=item.get("request_id"), video_id=video_id,
         )
     except gemini_client.GeminiConfigError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -952,6 +1086,10 @@ async def generate_action_list(video_id: str):
         raise HTTPException(status_code=404, detail="項目不存在")
 
     cached_path = action_list.find_cached_action_list(video_id)
+    cache_metrics.log_cache_event(
+        request_id=item.get("request_id"), video_id=video_id,
+        artifact_type="action_list", hit=cached_path is not None,
+    )
     if cached_path:
         return {
             "video_id": video_id,
@@ -970,7 +1108,8 @@ async def generate_action_list(video_id: str):
 
     try:
         data = await asyncio.to_thread(
-            gemini_client.generate_action_list, title=item["title"], blueprint_items=blueprint_items
+            gemini_client.generate_action_list, title=item["title"], blueprint_items=blueprint_items,
+            request_id=item.get("request_id"), video_id=video_id,
         )
     except gemini_client.GeminiConfigError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -1020,6 +1159,10 @@ async def generate_review(video_id: str):
         raise HTTPException(status_code=404, detail="項目不存在")
 
     cached_path = review.find_cached_review(video_id)
+    cache_metrics.log_cache_event(
+        request_id=item.get("request_id"), video_id=video_id,
+        artifact_type="review", hit=cached_path is not None,
+    )
     if cached_path:
         return {
             "video_id": video_id,
@@ -1038,7 +1181,8 @@ async def generate_review(video_id: str):
 
     try:
         data = await asyncio.to_thread(
-            gemini_client.generate_review, title=item["title"], blueprint_items=blueprint_items
+            gemini_client.generate_review, title=item["title"], blueprint_items=blueprint_items,
+            request_id=item.get("request_id"), video_id=video_id,
         )
     except gemini_client.GeminiConfigError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -1085,6 +1229,13 @@ async def download_transcript(video_id: str):
     if not transcript_path or not Path(transcript_path).exists():
         raise HTTPException(status_code=404, detail="Transcript 檔案不存在")
 
+    # Runtime Intelligence (Sprint 8.5A Task 1): "download" stage.
+    _now = datetime.now(timezone.utc)
+    runtime_metrics.log_stage(
+        request_id=item.get("request_id"), video_id=video_id, stage="download",
+        start_time=_now, end_time=_now, status="success",
+    )
+
     return FileResponse(
         transcript_path,
         media_type="text/markdown",
@@ -1102,6 +1253,13 @@ async def download_study_note(video_id: str):
     study_note_path = item.get("study_note_path")
     if not study_note_path or not Path(study_note_path).exists():
         raise HTTPException(status_code=404, detail="Study Note 檔案不存在")
+
+    # Runtime Intelligence (Sprint 8.5A Task 1): "download" stage.
+    _now = datetime.now(timezone.utc)
+    runtime_metrics.log_stage(
+        request_id=item.get("request_id"), video_id=video_id, stage="download",
+        start_time=_now, end_time=_now, status="success",
+    )
 
     return FileResponse(
         study_note_path,

@@ -1,8 +1,11 @@
 import json
 import os
+import time
 
 from google import genai
 from google.genai import types
+
+from observability import cost_metrics, error_metrics
 
 MODEL_NAME = "gemini-2.5-flash"
 
@@ -250,7 +253,59 @@ def _get_client() -> genai.Client:
     return _client
 
 
-def generate_study_note(title: str, url: str, transcript_text: str) -> str:
+def _generate_content(
+    *, client, model: str, contents, config, artifact_type: str,
+    request_id: str | None, video_id: str | None,
+):
+    """Shared call point for every Gemini request (Sprint 8.5A Task 2, Cost
+    Intelligence): times the call and logs token usage / estimated cost via
+    cost_metrics — the single place that touches response.usage_metadata, so
+    the 7 generate_*() functions below don't each duplicate the extraction.
+    Logging is best-effort (cost_metrics.log_usage never raises); only the
+    actual Gemini call itself can raise GeminiGenerationError here, same as
+    before this change.
+    """
+    start = time.monotonic()
+    try:
+        response = client.models.generate_content(model=model, contents=contents, config=config)
+    except Exception as exc:
+        # Error Intelligence (Sprint 8.5A Task 4): single interception point
+        # for every Gemini call failure, regardless of which of the 7
+        # generate_*() functions or which caller triggered it.
+        error_metrics.log_error(
+            request_id=request_id, video_id=video_id, stage="gemini",
+            artifact_type=artifact_type, exception=f"{type(exc).__name__}: {exc}",
+        )
+        raise GeminiGenerationError(str(exc)) from exc
+    processing_time_seconds = round(time.monotonic() - start, 3)
+
+    usage = getattr(response, "usage_metadata", None)
+    input_tokens = getattr(usage, "prompt_token_count", None) if usage is not None else None
+    output_tokens = None
+    if usage is not None:
+        # Gemini bills "thinking" tokens at the output rate, so they're
+        # folded into output_tokens here rather than tracked separately.
+        candidates_tokens = getattr(usage, "candidates_token_count", None) or 0
+        thoughts_tokens = getattr(usage, "thoughts_token_count", None) or 0
+        output_tokens = candidates_tokens + thoughts_tokens
+
+    cost_metrics.log_usage(
+        request_id=request_id,
+        video_id=video_id,
+        model=model,
+        artifact_type=artifact_type,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        processing_time_seconds=processing_time_seconds,
+    )
+
+    return response
+
+
+def generate_study_note(
+    title: str, url: str, transcript_text: str,
+    *, request_id: str | None = None, video_id: str | None = None,
+) -> str:
     client = _get_client()
 
     prompt = (
@@ -261,16 +316,11 @@ def generate_study_note(title: str, url: str, transcript_text: str) -> str:
         "請根據以上 Transcript 產生 Study Note。"
     )
 
-    try:
-        response = client.models.generate_content(
-            model=MODEL_NAME,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=_STUDY_NOTE_SYSTEM_INSTRUCTION,
-            ),
-        )
-    except Exception as exc:
-        raise GeminiGenerationError(str(exc)) from exc
+    response = _generate_content(
+        client=client, model=MODEL_NAME, contents=prompt,
+        config=types.GenerateContentConfig(system_instruction=_STUDY_NOTE_SYSTEM_INSTRUCTION),
+        artifact_type="study_note", request_id=request_id, video_id=video_id,
+    )
 
     text = getattr(response, "text", None)
     if not text:
@@ -279,7 +329,10 @@ def generate_study_note(title: str, url: str, transcript_text: str) -> str:
     return text.strip()
 
 
-def generate_knowledge_outline(title: str, url: str, transcript_text: str) -> str:
+def generate_knowledge_outline(
+    title: str, url: str, transcript_text: str,
+    *, request_id: str | None = None, video_id: str | None = None,
+) -> str:
     client = _get_client()
 
     prompt = (
@@ -290,16 +343,11 @@ def generate_knowledge_outline(title: str, url: str, transcript_text: str) -> st
         "請根據以上 Transcript 產生 One Sentence 與 Knowledge Outline。"
     )
 
-    try:
-        response = client.models.generate_content(
-            model=MODEL_NAME,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=_KNOWLEDGE_OUTLINE_SYSTEM_INSTRUCTION,
-            ),
-        )
-    except Exception as exc:
-        raise GeminiGenerationError(str(exc)) from exc
+    response = _generate_content(
+        client=client, model=MODEL_NAME, contents=prompt,
+        config=types.GenerateContentConfig(system_instruction=_KNOWLEDGE_OUTLINE_SYSTEM_INSTRUCTION),
+        artifact_type="knowledge_outline", request_id=request_id, video_id=video_id,
+    )
 
     text = getattr(response, "text", None)
     if not text:
@@ -308,7 +356,10 @@ def generate_knowledge_outline(title: str, url: str, transcript_text: str) -> st
     return text.strip()
 
 
-def generate_learning_blueprint(title: str, url: str, transcript_text: str) -> dict:
+def generate_learning_blueprint(
+    title: str, url: str, transcript_text: str,
+    *, request_id: str | None = None, video_id: str | None = None,
+) -> dict:
     client = _get_client()
 
     prompt = (
@@ -319,18 +370,15 @@ def generate_learning_blueprint(title: str, url: str, transcript_text: str) -> d
         "請根據以上 Transcript，判斷 structure_type 並輸出對應的 Knowledge JSON。"
     )
 
-    try:
-        response = client.models.generate_content(
-            model=MODEL_NAME,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=_LEARNING_BLUEPRINT_SYSTEM_INSTRUCTION,
-                response_mime_type="application/json",
-                temperature=0,
-            ),
-        )
-    except Exception as exc:
-        raise GeminiGenerationError(str(exc)) from exc
+    response = _generate_content(
+        client=client, model=MODEL_NAME, contents=prompt,
+        config=types.GenerateContentConfig(
+            system_instruction=_LEARNING_BLUEPRINT_SYSTEM_INSTRUCTION,
+            response_mime_type="application/json",
+            temperature=0,
+        ),
+        artifact_type="learning_blueprint", request_id=request_id, video_id=video_id,
+    )
 
     text = getattr(response, "text", None)
     if not text:
@@ -347,7 +395,10 @@ def generate_learning_blueprint(title: str, url: str, transcript_text: str) -> d
     return data
 
 
-def generate_teach_back(title: str, blueprint_items: list[dict]) -> dict:
+def generate_teach_back(
+    title: str, blueprint_items: list[dict],
+    *, request_id: str | None = None, video_id: str | None = None,
+) -> dict:
     """Input is the already-extracted Learning Blueprint items (see
     teach_back.extract_blueprint_items), not the raw Transcript — Teach Back
     is generated FROM the Learning Blueprint, not independently from it, per
@@ -367,18 +418,15 @@ def generate_teach_back(title: str, blueprint_items: list[dict]) -> dict:
         "請針對以上每一個學習重點，依序各自產生一組 Teach Back。"
     )
 
-    try:
-        response = client.models.generate_content(
-            model=MODEL_NAME,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=_TEACH_BACK_SYSTEM_INSTRUCTION,
-                response_mime_type="application/json",
-                temperature=0,
-            ),
-        )
-    except Exception as exc:
-        raise GeminiGenerationError(str(exc)) from exc
+    response = _generate_content(
+        client=client, model=MODEL_NAME, contents=prompt,
+        config=types.GenerateContentConfig(
+            system_instruction=_TEACH_BACK_SYSTEM_INSTRUCTION,
+            response_mime_type="application/json",
+            temperature=0,
+        ),
+        artifact_type="teach_back", request_id=request_id, video_id=video_id,
+    )
 
     text = getattr(response, "text", None)
     if not text:
@@ -395,7 +443,10 @@ def generate_teach_back(title: str, blueprint_items: list[dict]) -> dict:
     return data
 
 
-def generate_action_list(title: str, blueprint_items: list[dict]) -> dict:
+def generate_action_list(
+    title: str, blueprint_items: list[dict],
+    *, request_id: str | None = None, video_id: str | None = None,
+) -> dict:
     """Same input shape as generate_teach_back() (already-extracted Learning
     Blueprint items) but summarized into one flat 3-5 item list, not one
     block per item — Action List is a single today-actionable takeaway for
@@ -415,18 +466,15 @@ def generate_action_list(title: str, blueprint_items: list[dict]) -> dict:
         "請根據以上全部學習重點，彙總產生 Action List。"
     )
 
-    try:
-        response = client.models.generate_content(
-            model=MODEL_NAME,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=_ACTION_LIST_SYSTEM_INSTRUCTION,
-                response_mime_type="application/json",
-                temperature=0,
-            ),
-        )
-    except Exception as exc:
-        raise GeminiGenerationError(str(exc)) from exc
+    response = _generate_content(
+        client=client, model=MODEL_NAME, contents=prompt,
+        config=types.GenerateContentConfig(
+            system_instruction=_ACTION_LIST_SYSTEM_INSTRUCTION,
+            response_mime_type="application/json",
+            temperature=0,
+        ),
+        artifact_type="action_list", request_id=request_id, video_id=video_id,
+    )
 
     text = getattr(response, "text", None)
     if not text:
@@ -443,7 +491,10 @@ def generate_action_list(title: str, blueprint_items: list[dict]) -> dict:
     return data
 
 
-def generate_review(title: str, blueprint_items: list[dict]) -> dict:
+def generate_review(
+    title: str, blueprint_items: list[dict],
+    *, request_id: str | None = None, video_id: str | None = None,
+) -> dict:
     """Same input shape as generate_teach_back()/generate_action_list()
     (already-extracted Learning Blueprint items) — Review only depends on
     Learning Blueprint, not on the separate Knowledge Outline/One Sentence
@@ -464,18 +515,15 @@ def generate_review(title: str, blueprint_items: list[dict]) -> dict:
         "請根據以上學習重點，產生 Review（Active Recall）的四個區塊。"
     )
 
-    try:
-        response = client.models.generate_content(
-            model=MODEL_NAME,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=_REVIEW_SYSTEM_INSTRUCTION,
-                response_mime_type="application/json",
-                temperature=0,
-            ),
-        )
-    except Exception as exc:
-        raise GeminiGenerationError(str(exc)) from exc
+    response = _generate_content(
+        client=client, model=MODEL_NAME, contents=prompt,
+        config=types.GenerateContentConfig(
+            system_instruction=_REVIEW_SYSTEM_INSTRUCTION,
+            response_mime_type="application/json",
+            temperature=0,
+        ),
+        artifact_type="review", request_id=request_id, video_id=video_id,
+    )
 
     text = getattr(response, "text", None)
     if not text:
@@ -495,7 +543,10 @@ def generate_review(title: str, blueprint_items: list[dict]) -> dict:
     return data
 
 
-def generate_quick_summary(title: str, url: str, transcript_text: str) -> str:
+def generate_quick_summary(
+    title: str, url: str, transcript_text: str,
+    *, request_id: str | None = None, video_id: str | None = None,
+) -> str:
     client = _get_client()
 
     prompt = (
@@ -506,16 +557,11 @@ def generate_quick_summary(title: str, url: str, transcript_text: str) -> str:
         "請根據以上 Transcript，用一句話說明這部影片最重要的核心重點。"
     )
 
-    try:
-        response = client.models.generate_content(
-            model=MODEL_NAME,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=_QUICK_SUMMARY_SYSTEM_INSTRUCTION,
-            ),
-        )
-    except Exception as exc:
-        raise GeminiGenerationError(str(exc)) from exc
+    response = _generate_content(
+        client=client, model=MODEL_NAME, contents=prompt,
+        config=types.GenerateContentConfig(system_instruction=_QUICK_SUMMARY_SYSTEM_INSTRUCTION),
+        artifact_type="quick_summary", request_id=request_id, video_id=video_id,
+    )
 
     text = getattr(response, "text", None)
     if not text:

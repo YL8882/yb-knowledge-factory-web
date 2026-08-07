@@ -96,3 +96,20 @@ purpose: Track added, changed, fixed, and removed functionality per release.
 ### Known Limitations
 - Structure Detection 一致性未達完全穩定：同一支內容特徵模糊的影片，重複生成可能得到不同 `structure_type`（已加 `temperature=0` 改善，未完全消除）
 - Gemini 呼叫失敗時的 Error Response 處理未強化，待後續獨立 Bug Fix Task
+
+## 2026-08-07
+
+### Added
+- Product Intelligence Foundation（Sprint 8.5A，純 Backend，不修改 UI／Prompt）：新增 `app/observability/` package
+- Correlation ID：`queue_store.add_item()` 產生 `request_id`（uuid4），鏡射進 `history_store.add_entry()`，貫穿 Queue／Transcript／Gemini／Study Note／Download 全流程
+- Runtime Intelligence：記錄 Queue／Transcript／Study Note／Download 四階段起訖時間與成功/失敗，寫入 `outputs/logs/runtime.jsonl`
+- Cost Intelligence：`gemini_client.py` 單一攔截點記錄全部 7 種 Gemini 呼叫的 Token 用量與估算成本（USD），寫入 `outputs/logs/gemini_usage.jsonl`
+- Cache Intelligence：既有 7 處快取檢查點記錄 Hit/Miss 與估算節省成本，寫入 `outputs/logs/cache.jsonl`
+- Error Intelligence：Gemini 與非 Gemini 失敗分別記錄，含即時查詢得出的 `retry_count`，寫入 `outputs/logs/errors.jsonl`
+- `outputs/reports/daily_report.json`：每筆事件即時增量更新，彙總 Runtime／Usage／Cache／Study Package／Errors
+- `PRODUCT_INTELLIGENCE_ENABLED` 環境變數：可整體關閉全部 Product Intelligence 記錄，不影響既有 MVP 流程
+
+### Known Limitations
+- `GeminiConfigError`（缺少 `GEMINI_API_KEY`）與 5 個獨立 Learning Model 端點的非 Gemini 失敗，目前不在 Error Intelligence 記錄範圍
+- `POST /api/queue` 的無效網址／找不到影片拒絕點發生在 `request_id` 產生之前，不會留下任何 Runtime／Error 紀錄（見 `TODO.md` Product Backlog）
+- `Cost_Analysis.md` 記載的 Cache 節省成本估算值為 MVP 開發期間粗估，僅在當天完全沒有真實用量資料時作為 fallback
