@@ -1,157 +1,203 @@
 ---
-Version: v1.0
-Status: Draft
-Owner: Claude Code
+Version: 2.0
+Status: Current
+Document Type: Engineering Reference
 Document: Engineering Understanding Report
 Category: Project Management
-Purpose: Record engineering onboarding understanding of YB Knowledge Factory MVP before Sprint 1 development.
-Scope: YB Knowledge Factory MVP v0.1
+Purpose: Current Engineering Understanding / Codebase Truth for YB Learn (YB Knowledge Lite).
+Update Policy: Only update after (1) a Major Milestone or (2) a Significant Architecture Change. Do NOT update for every Sprint.
+Scope: YB Knowledge Factory MVP v0.1 (product name: YB Learn / YB Knowledge Lite)
 Priority: High
-Last Updated: 2026-07-30
-Related Documents:
-  - Product_Index.md
-  - PRD.md
-  - Product_Architecture.md
-  - Workflow_Specification.md
-  - Technical_Decision.md
-  - Project_Dashboard.md
-  - MVP_Test_Report.md
+Last Updated: 2026-08-08
+Source Priority: Actual Code > CLAUDE.md > TODO.md / Acceptance_Test.md > other documentation
 ---
 
 # Engineering Understanding Report
 
-> Pre-Sprint 1 onboarding report. No production code was written or modified while producing this report.
+> This document describes what is actually implemented in the codebase today. It is not a Sprint log — Sprint-by-Sprint history lives in `TODO.md`; acceptance criteria live in `Acceptance_Test.md`. This report is superseded only by re-reading the code, never by another planning document.
 
 ---
 
-# 0. Note on Reading Order
+## 1. System Overview
 
-The kickoff instructions asked me to read, in order: `Documentation_Standard.md`, `CLAUDE.md`, `README.md`, `Product_Blueprint.md`, `PRD.md`, `Product_Architecture.md`, `AI_Pipeline_Architecture.md`, `Runtime_Specification.md`, `Workflow_Specification.md`, `Output_Specification.md`, `Wireframe_Specification.md`, `UI_Component_Specification.md`, `Repository_Governance.md`.
-
-I searched the entire repository and **four of those files do not exist anywhere**: `Documentation_Standard.md`, `Product_Blueprint.md`, `AI_Pipeline_Architecture.md`, `Repository_Governance.md`. A stray `CHANGELOG.md.md` at the repo root (front matter: `Owner: AI Product Factory`, `Category: Product Template`) suggests this repo was bootstrapped from a generic "AI Product Factory" template, and the kickoff prompt is that template's generic onboarding script — not one written specifically for this repo's current file layout. I read every document from the list that does exist, plus the documents those files themselves point to (PRD, Product Architecture, Technical Decision, Runtime/Output/Workflow/Prompt/UI specs, Queue System Design, Application Architecture Blueprint, Milestone docs, `CLAUDE.md`, `README.md`, and the full `app/` source), rather than stop at the first missing file. Details in §5.
-
----
-
-# 1. Project Understanding
-
-**Product:** YB Knowledge Factory MVP v0.1 — a web tool that turns a YB YouTube teaching video into two durable Markdown knowledge assets in one pass.
-
-**Core loop (per PRD.md / Workflow_Specification.md):**
+YB Learn turns a YouTube video into a set of durable Markdown/JSON knowledge artifacts, driven from a one-click Chrome Extension button on the YouTube page itself.
 
 ```text
-Paste YouTube URL → Queue → Download Audio → Transcript (Faster Whisper)
-→ Study Note (Gemini 2.5 Flash) → Download Transcript.md + Study_Note.md
+YouTube video
+  → Chrome Extension ("YB Learn" button)
+  → FastAPI backend (Queue)
+  → Transcript (subtitle fetch, or yt-dlp audio + faster-whisper fallback)
+  → Study Note (Gemini)
+  → optional, on-demand: Knowledge Outline / Learning Blueprint / Teach Back / Action List / Review
+  → Markdown / JSON files on disk, downloadable individually or as a Knowledge Package (.zip)
 ```
 
-**Why it exists:** YB's teaching videos run 20–60 minutes; manually re-watching and note-taking is slow and lossy. The product's success definition (PRD §13) is narrow and concrete: one YouTube URL in, `Transcript.md` + `Study_Note.md` out, no manual cleanup required.
-
-**Explicit MVP boundaries (PRD §9 / Technical_Decision.md §8):** no login, no database, no cloud sync, no Knowledge Card / SOP / Prompt Library / RAG / AI Chat / multi-user. These are deferred to v0.2+.
-
-**Chosen stack (Technical_Decision.md, Final):** Python + FastAPI backend, Gemini 2.5 Flash for Study Note generation, yt-dlp for audio download, Faster Whisper for transcription, OpenCC (s2t) for Simplified→Traditional Chinese normalization, Markdown as the only output format, no DB, Windows localhost deployment for MVP.
-
-**Actual current status (this is not a greenfield kickoff):** the MVP is already built and functionally tested. `git log` shows the build was completed and released (`Release MVP v0.1`, `feat: add transcript generation with faster-whisper`, `feat: add YouTube queue and metadata retrieval`), and `docs/MVP_Test_Report.md` records a PASS across the full workflow, download endpoints, and five error scenarios. Earlier today the Study Note section-naming question was resolved (decision recorded in `CHANGELOG.md` under "MVP v0.1 — Documentation Sync") and `app/TODO.md`, `Engineering_Backlog.md`, `Acceptance_Test.md`, and `Project_Dashboard.md` were updated to reflect that Milestone 02 (Build MVP) is functionally complete, pending your final Product Owner sign-off. I am treating this report as a checkpoint on top of that existing state, not as day-one discovery.
+Single-user, single-machine, no login, no database, no cloud sync. State lives in JSON files under `outputs/`.
 
 ---
 
-# 2. Repository Understanding
-
-## 2.1 Layout
+## 2. Current Architecture
 
 ```text
-app/                    FastAPI application (the only code in the repo)
-  main.py               Routes: queue CRUD, transcript, study-note, downloads
-  youtube.py            URL validation + yt-dlp metadata fetch
-  queue_store.py        In-memory queue (add/list/remove/duplicate/100-item cap)
-  transcript.py         yt-dlp audio download + faster-whisper transcription
-  gemini_client.py       Gemini 2.5 Flash call + system instruction (Study Note prompt, inlined in Python, not loaded from docs/)
-  study_note.py         Metadata block assembly + file save
-  templates/, static/   Single-page HTML/CSS/JS frontend
-outputs/                Generated transcripts/ and study_notes/ (persisted; queue itself is not)
-docs/
-  00_Project_Management/  Dev Ops constitution, Dashboard, CHANGELOG, Stage Gate
-  01_Product_Requirements/Core   PRD, Product_Architecture, Runtime/Output/Workflow_Specification, Technical_Decision, Product_Index
-  01_Product_Requirements/UI     UI_Component_Specification, Wireframe_Specification, Application Architecture Blueprint
-  01_Product_Requirements/Integrations  Browser_Extension_PRD, Quick_Capture_Architecture (future scope)
-  02_Prompt_Design/        Prompt_Specification, AI Role / System Instructions / Task Prompt / Output Schema chain for Study Note
-  03_Workflows/            Workflow_Specification (detailed), Queue_System_Design, MVP_Single_Page_Workflow
-  04_Templates/            StudyNote_Template_v3.0.md — declared Single Source of Truth for Study Note structure
-  05_UI_UX/                Wireframes and design pack (images + doc)
-  06_Google_AI_Studio/     Prototype build prompts (historical, prototype stage only)
-  99_Milestone/            Milestone_00 (Project Freeze) → 01 (Prototype Freeze) → 02 (Build MVP), each with its own backlog/acceptance doc
+extension/           Chrome Extension (Manifest V3) — capture + open/focus Workspace tab
+app/                 FastAPI application — the only backend code
+  main.py            All HTTP routes, the single-worker pipeline, Stage Guard
+  queue_store.py      In-memory queue, mirrored to outputs/queue.json
+  history_store.py    Append/update log of processed videos, mirrored to outputs/history.json
+  youtube.py          URL validation + yt-dlp metadata fetch
+  transcript.py        Subtitle fetch / audio download / faster-whisper transcription / OpenCC
+  gemini_client.py     All Gemini calls, one interception point, 7 generate_* functions
+  study_note.py, knowledge_outline.py, learning_blueprint.py,
+  teach_back.py, action_list.py, review.py
+                       Per-artifact file assembly + persistence (one module per artifact type)
+  knowledge_package.py Zip export (single video and bulk)
+  error_messages.py    Maps raw exception text → user-facing Traditional Chinese messages
+  observability/        Best-effort JSONL logging + daily_report.json aggregation
+  templates/, static/   Single-page HTML/CSS/JS frontend (no frontend framework/build step)
+outputs/              All generated artifacts + queue.json / history.json + logs/
 ```
 
-## 2.2 Governance model (`Development_Operating_System.md`, referenced by the old `CLAUDE.md` and still the operative process even though `CLAUDE.md` itself was just simplified to v2.0)
-
-- One Milestone at a time; a Milestone is "done" only after Spec → Code → Test → Review → Commit → Docs Updated.
-- Single Source of Truth per topic — but see §4.1, this rule is currently violated in two places.
-- Frozen decisions require a new version to change, not a silent edit.
-- Reference documents instead of re-pasting them; review only diffs.
-
-`CLAUDE.md` was rewritten today (external edit, not by me) into a leaner v2.0. It keeps the essential rules relevant here: no product decisions without confirmation, keep `README.md` / `TODO.md` / `Acceptance_Test.md` / `Engineering_Backlog.md` / `Project_Dashboard.md` in sync whenever implementation changes, summarize before committing, never push automatically, and when uncertain — explain options, recommend, wait.
-
-## 2.3 What the code actually does today (verified by reading `app/`, not just docs)
-
-- Queue is in-memory only (`queue_store.py`) — cleared on server restart. This matches Technical_Decision.md's "no Database" call, but is narrower than `Queue_System_Design.md`, which describes `queue.json` persistence and even multi-device cloud sync behind login — see §4.1.
-- Transcript and Study Note generation are **manual, per-item button clicks** in the UI (`static/script.js`), not an automatic single-pipeline run after one "Generate" click — see §4.1 for the spec conflict this creates.
-- Study Note output structure (`gemini_client.py` system instruction, verified against a real generated file in `outputs/study_notes/`) is: Metadata block (Title/Source/Author/Date/Language/Tags/Version) + `Executive Summary / Key Takeaways / Detailed Notes / Core Concepts / Workflow / Tools / Best Practices / Key Decisions / Future Research / References`. This was reconciled today with `StudyNote_Template_v3.0.md` and `StudyNote_Output_Schema_v1.0.md` — but not with three other "Final" documents that still describe the old 5-section Chinese structure. See §4.1.
-- No OpenCC step anywhere in `app/` or `requirements.txt`, despite three Final specs requiring it. See §4.1.
-- No logging module in the codebase (confirmed via grep) — `Engineering_Backlog.md` P1 "Logging" is correctly still unchecked.
+There is no database, no ORM, no message broker, and no separate frontend build — `static/script.js` talks directly to the FastAPI JSON API and re-renders the page by polling.
 
 ---
 
-# 3. Development Plan
+## 3. Core Modules & Responsibilities
 
-Given the MVP is already built, tested, and functionally accepted (pending your sign-off), I'm not proposing a Sprint 1 "build from scratch" plan. Instead, two possible next steps depend entirely on decisions only you can make (§6):
-
-**Path A — Close the spec/implementation gaps found in §4.1 first.** Before any new feature work, reconcile PRD.md / Workflow_Specification.md (Core) / Prompt_Specification.md against the actual Study Note structure and the OpenCC gap, since these are "Frozen/Final" governance documents and currently contradict both the code and the docs I updated this morning. This is pure documentation + a small, contained code decision (add OpenCC or formally drop it), no new features.
-
-**Path B — Start Milestone 03 (per the just-corrected Project_Dashboard.md numbering: Improve UI/UX) once you sign off Milestone 02**, deferring the doc reconciliation in §4.1 to a tracked backlog item instead of blocking on it.
-
-I recommend Path A first, narrowly scoped (just the specific contradictions listed below), because shipping new UI/UX work on top of governance docs that describe a different Study Note schema and a missing Chinese-conversion step will make the drift worse and harder to unwind later. But this is a recommendation, not something I've started — no docs beyond this report have been touched.
-
----
-
-# 4. Risks
-
-## 4.1 Specification contradictions (highest priority — these are all "Status: Final" documents disagreeing with each other and/or with the code)
-
-| Topic | Says one thing | Says another thing | Actual code |
-|---|---|---|---|
-| Study Note structure | `PRD.md` (Core), `Workflow_Specification.md` (Core, 81 lines), `Prompt_Specification.md` (02_Prompt_Design root) — all specify 5 Chinese sections: 一句話摘要／重點摘要／重點解析／操作流程／延伸資訊 | `StudyNote_Template_v3.0.md` + `StudyNote_Output_Schema_v1.0.md` (updated this morning) — 9 English sections + Metadata block | Matches the *second* column exactly |
-| Traditional Chinese conversion | `Technical_Decision.md` and `docs/03_Workflows/Workflow_Specification.md` (445-line version) both mandate an explicit OpenCC (s2t) step | — | Not implemented at all; not in `requirements.txt`, not imported anywhere. Spot-checked two real Chinese transcripts in `outputs/transcripts/` — both happen to already be Traditional Chinese (Faster Whisper's raw output), but there is no code-level guarantee of this for all inputs/models |
-| Auto-pipeline vs manual steps | `Application Architecture Blueprint.md` (v2.0, Final) and `docs/03_Workflows/MVP_Single_Page_Workflow.md` (v1.0, Final) both specify "One Click Generate" / "Auto Pipeline" — one Generate click runs Audio→Transcript→Study Note automatically | — | UI requires a separate manual click per queue item for "產生 Transcript" and then again for "產生 Study Note" (already logged as a known, accepted MVP simplification in `MVP_Test_Report.md`'s backlog, so this one is a known deviation, not a fresh surprise) |
-| Queue scope | `Queue_System_Design.md` (Final) describes `queue.json` persistence and cloud sync across devices behind login | `PRD.md` §9 explicitly excludes Login, Database, and Cloud Sync from MVP | In-memory queue only, no persistence, no login — matches PRD, contradicts Queue_System_Design.md |
-
-None of these are things I should silently resolve — per both the old and new `CLAUDE.md`, product decisions need your confirmation, and the Dev Ops doc treats "Final" status as frozen (not to be reopened without a version bump). I flagged the Study Note naming question this morning and got a decision, but only updated the two prompt-layer docs (`Template`, `Output Schema`) — I did not touch the three higher-level "Final" docs that still describe the old schema, because that would have gone beyond what was asked at the time. That gap is now open again in a different form: which of `PRD.md` / `Workflow_Specification.md` / `Prompt_Specification.md` also need a version bump to match this morning's decision.
-
-## 4.2 Documentation duplication (Single-Source-of-Truth violation, per the Dev Ops doc's own rule)
-
-`docs/` has a flat root layer that duplicates several canonical sub-folder documents, with genuinely different content (not just copies) — e.g. `docs/PRD.md` (235 lines) vs `docs/01_Product_Requirements/Core/PRD.md` (332 lines); `docs/Workflow Specification.md` (270 lines, note the space in the filename) vs two other Workflow_Specification.md files (81 and 445 lines) in different folders; similarly for `Product_Architecture.md`, `Wireframe_Specification.md`, and `Prompt_Specification.md`. It's not obvious from the files themselves which is authoritative for a newcomer — I inferred it from `Product_Index.md`'s reading order, which points at the `01_Product_Requirements/Core` and `01_Product_Requirements/UI` copies. I have not touched or deleted any of these, per your instruction not to modify documentation unless told to.
-
-## 4.3 Minor
-
-- Root-level `CHANGELOG.md.md` looks like an unintended leftover from the AI Product Factory template scaffold, separate from the project's real `docs/00_Project_Management/CHANGELOG.md`.
-- `Project_Dashboard.md`'s "Next Milestones" table used to number-collide with the `99_Milestone/` folder scheme (Milestone 00/01/02 already used on disk); this was corrected earlier today, flagging here only so the fix is visible to you.
+| Module | Responsibility |
+|---|---|
+| `main.py` | Route definitions, request validation, the single background worker thread that runs the automatic Transcript→Study Note pipeline, Stage Guard (forward-only state checks so a finished stage never re-runs) |
+| `queue_store.py` | In-memory list of queue items (add/list/remove, 100-item cap, duplicate-`video_id` rejection — `video_id` is parsed from the URL by `youtube.py` before reaching `queue_store`, not a raw URL string comparison), persisted to `outputs/queue.json` on every write; on load, items frozen mid-"Downloading"/"Transcribing"/"Generating" by a prior crash are reset to the last retryable state |
+| `history_store.py` | Append-only-by-video_id record of every processed video, independent of the Queue's lifecycle (an item removed from the Queue stays in History), persisted to `outputs/history.json` |
+| `youtube.py` | Validates a YouTube URL (including `/shorts/`) and extracts `video_id` / metadata via `yt-dlp` |
+| `transcript.py` | Tries `fetch_subtitle_transcript()` (YouTube captions, language-preference ordered) first; on failure, falls back to `download_audio()` + `transcribe_audio()` (faster-whisper, `base` model, CPU int8); converts output to Traditional Chinese via `OpenCC("s2twp")` |
+| `gemini_client.py` | One private `_generate_content()` call site used by all 7 `generate_*()` functions (study_note, quick_summary, knowledge_outline, learning_blueprint, teach_back, action_list, review); each has its own hard-coded system-instruction prompt |
+| `study_note.py` | Assembles the Study Note Markdown (metadata block + Gemini content) and saves it |
+| `knowledge_outline.py` / `learning_blueprint.py` / `teach_back.py` / `action_list.py` / `review.py` | One module per Learning Model artifact type; each is triggered independently by its own API call, reads existing upstream artifacts (not the raw transcript) as input, and persists its own output file |
+| `knowledge_package.py` | Builds a `.zip` (single video or bulk-all) containing `Transcript.md` + `Study_Note.md`; sanitizes folder/file names (CJK-safe allowlist, 50-char truncation) to avoid Windows extraction failures |
+| `error_messages.py` | `classify_error(raw_message, stage)` maps raw exception text to a fixed set of Traditional Chinese user-facing messages, disambiguating Gemini-quota errors from non-Gemini (download/transcription) service errors by `stage` |
+| `observability/` | `logger.py` (JSONL writer, gated by `PRODUCT_INTELLIGENCE_ENABLED`), `runtime_metrics.py`, `cost_metrics.py`, `cache_metrics.py`, `error_metrics.py`, `daily_report.py` (incremental aggregation into `outputs/logs/daily_report.json`) |
 
 ---
 
-# 5. Missing Information
+## 4. Core Data Flow
 
-- `Documentation_Standard.md`, `Product_Blueprint.md`, `AI_Pipeline_Architecture.md`, `Repository_Governance.md` — referenced by the kickoff prompt and, in the first case, also referenced from inside `Development_Operating_System.md`'s own front matter and `Product_Architecture.md`'s References section — but none exist in the repository. I cannot summarize documents that aren't there; I'd need to know whether they (a) were never written, (b) exist in the original AI Product Factory template repo and should be copied in, or (c) are already superseded by content that lives elsewhere under a different name.
-- No stated deadline or urgency for Milestone 03 / next steps — the Dashboard's "Priorities" section is generic ("complete MVP core features") and doesn't indicate what happens after final sign-off.
+```text
+1. User clicks "YB Learn" on a YouTube tab (extension/content.js)
+2. content.js → POST /api/capture → main.py validates URL, adds to queue_store,
+   generates a request_id (uuid4)
+3. content.js → chrome.runtime message → background.js opens/focuses the single
+   Workspace browser tab at http://127.0.0.1:8000/?url=<captured_url>
+4. Workspace page load → static/script.js reads ?url= → POST /api/queue →
+   item enters the automatic pipeline (transcript → study note)
+5. main.py's single worker thread (_pipeline_worker_loop, backed by a stdlib
+   Queue) processes one job at a time: Transcript stage, then Study Note
+   stage. The Transcript stage itself makes its own Gemini call
+   (gemini_client.generate_quick_summary()) to produce the one-line summary
+   saved into the Transcript file, skipped when an existing summary can be
+   reused; the Study Note stage separately calls generate_study_note()
+6. Stage Guard checks the item's current status before doing work — a stage
+   already reached or passed is never re-run; re-requesting it just returns
+   the existing result
+7. script.js polls GET /api/queue every 1.5s and re-renders the Queue list
+8. Once Study Note exists, the user may independently trigger any of the 5
+   Learning Model endpoints per Queue Card — these do NOT go through
+   _pipeline_queue / the single worker thread; each runs on its own request,
+   off the event loop via asyncio.to_thread()
+9. Downloads: individual file downloads, or a Knowledge Package (.zip) via
+   knowledge_package.py, built from files verified to exist on disk (not
+   trusted from stored path fields)
+10. History page (GET /api/history) reads history_store.py, independent of
+    the Queue's contents
+```
 
 ---
 
-# 6. Questions
+## 5. State & Persistence
 
-1. **Study Note schema reconciliation (§4.1, row 1):** Should I version-bump `PRD.md`, the two `Workflow_Specification.md` files, and `Prompt_Specification.md` to match the 9-section English structure now recorded in `StudyNote_Template_v3.0.md`, or was this morning's decision meant to apply narrowly to the prompt/template layer only, leaving the product-level docs describing an aspirational/older schema on purpose?
-2. **OpenCC (§4.1, row 2):** Is the missing Simplified→Traditional conversion step an acceptable, intentional MVP simplification (since Faster Whisper's raw output has been Traditional in the samples I checked), or should it be implemented to match `Technical_Decision.md` and the Workflow Specification, or should those two Final documents instead be amended to drop the OpenCC requirement?
-3. **Doc duplication (§4.2):** Can I delete or archive the stale root-level `docs/*.md` duplicates (and the stray `CHANGELOG.md.md`) once you confirm the sub-folder versions are authoritative? I have not touched any of them yet since you said not to modify documentation unless instructed.
-4. **Missing template docs (§5):** Do `Documentation_Standard.md` / `Product_Blueprint.md` / `AI_Pipeline_Architecture.md` / `Repository_Governance.md` need to be created, or should the kickoff reading list be treated as outdated for this repo?
-5. **Next step:** Given Milestone 02 is functionally complete pending your sign-off, do you want me to wait for that sign-off before any further action, or proceed straight into scoping Milestone 03 (Improve UI/UX) in parallel with your review?
+- **No database.** All state is JSON files under `outputs/`: `queue.json`, `history.json`, plus generated artifact files (`.md` / `.json`) under their respective subfolders and JSONL logs under `outputs/logs/`.
+- **Queue** (`queue_store.py`) is the in-memory source of truth during a server run, written to `outputs/queue.json` after every mutation. On restart, `queue.json` is reloaded and any item frozen in a non-terminal in-progress status is reset to the last retryable status.
+- **History** (`history_store.py`) is a separate, longer-lived record keyed by `video_id`; removing an item from the Queue does not remove it from History.
+- **Correlation ID**: `queue_store.add_item()` generates a `request_id` (uuid4) that is mirrored into the History entry, so a run can be traced across Runtime / Gemini-usage / Cache / Error logs even after the Queue item is gone.
+- **Artifact files are the real completeness signal.** Several endpoints (Queue Card download button, History card, bulk export) verify a Transcript/Study Note exists on disk rather than trusting a stored path field, because a path field can point to a file that was later deleted or never fully written.
+- **Feature flag:** `PRODUCT_INTELLIGENCE_ENABLED` (env var, default true) disables all observability writes without touching the main pipeline; observability writes are all best-effort (failures are swallowed, never raised).
 
 ---
 
-# Stop Condition
+## 6. AI / Transcript / Learning Pipeline
 
-No production code was written. No files were modified. This report is the only new document created, as instructed. Waiting for your review before Sprint 1 / next Milestone work begins.
+**Transcript:** `fetch_subtitle_transcript()` (YouTube captions, `zh-Hant`/`zh-TW`/`zh-Hans`/`zh-CN`/`zh`/`en` preference order) is tried first; on failure, falls back to `yt-dlp` audio download + `faster-whisper` (`base`, CPU, int8) transcription. Output is normalized to Traditional Chinese via `OpenCC("s2twp")` regardless of which path produced it.
+
+**Quick Summary (Gemini, Transcript stage):** once transcript text is obtained (from a cached Transcript file, subtitles, or Whisper), `main.py` calls `gemini_client.generate_quick_summary()` to produce the one-line summary saved into the Transcript file's `## Summary` block. This call is skipped when a summary can already be reused (from the transcript file itself or the in-memory queue item); if it fails (`GeminiConfigError`/`GeminiGenerationError`), the summary is left empty rather than failing the Transcript stage. This is a distinct Gemini call from Study Note generation, made during the Transcript stage.
+
+**Study Note (Gemini):** a separate Gemini call, using a fixed system-instruction prompt inlined in `gemini_client.py` (`generate_study_note`), producing a metadata block + structured Markdown sections. Whether a given video ends up making one or two Gemini calls in the automatic pipeline depends on cache state (e.g. an already-cached Transcript with an already-embedded summary skips the Quick Summary call) — the code does not guarantee a fixed call count per video.
+
+**Learning Model (5 independent, on-demand artifacts, triggered per Queue Card after Study Note exists):**
+
+| Artifact | Reads | Produces |
+|---|---|---|
+| Knowledge Outline | Transcript | One Sentence + Knowledge Outline |
+| Learning Blueprint | Transcript | Structured Knowledge JSON (`structure_type` + shape-specific `content`, via a two-step Structure Detection → Knowledge Extraction Gemini call, `temperature=0`) |
+| Teach Back | existing Learning Blueprint (not raw transcript) | Per-learning-point explain/self-check/practice prompts + a fixed 4-question reflection template |
+| Action List | existing Learning Blueprint | 3–5 "do today" actions |
+| Review | existing Learning Blueprint | Recall questions, workflow recall, optional blank-filling, fixed 4-question reflection template |
+
+All 5 are cache-first: re-requesting an already-generated artifact returns the saved file instead of calling Gemini again. All 5 run off the main pipeline's single-worker queue and off FastAPI's event loop (`asyncio.to_thread`), so they don't block each other or the automatic Transcript/Study Note pipeline.
+
+**Gemini call interception:** every `generate_*()` function routes through one private `_generate_content()` call site, which is the single point where token usage, cost estimate, and error classification are recorded (see `observability/`).
+
+---
+
+## 7. Chrome Extension
+
+Manifest V3, 4 files (`manifest.json`, `background.js`, `content.js`, `content.css`). Host permission scoped to `http://127.0.0.1:8000/*`.
+
+- `content.js` runs on `www.youtube.com`, injects a "▶ YB Learn" button on `/watch` and `/shorts/*` pages, re-syncing visibility on YouTube's `yt-navigate-finish` SPA navigation event (YouTube doesn't reload the document between videos).
+- On click: `POST /api/capture` to the backend, then a `chrome.runtime` message to the background service worker to open/focus the Workspace tab — done as two independent steps so a Workspace-opening failure (e.g. stale extension context) isn't misreported as a capture failure.
+- `background.js` implements the **Single Workspace** principle: it reuses one existing Workspace tab (navigating it to the new `?url=` and re-triggering the page's own load-time auto-start) instead of opening a new tab per capture; only creates a new tab if none exists.
+- The extension itself holds no pipeline logic — all processing happens after the Workspace page loads and calls the backend API.
+
+---
+
+## 8. Testing Strategy
+
+There is no automated test suite (no `pytest`, no `test_*.py`, no CI config) anywhere in the repository. Verification is exclusively manual: each implemented task is validated by a human via the browser and recorded as a Human Test result in `Acceptance_Test.md`. `TODO.md` records the RCA and manual verification steps behind each completed task. This is a deliberate, unchanged project convention, not a gap awaiting automation.
+
+---
+
+## 9. External Dependencies
+
+From `requirements.txt`:
+
+| Package | Role |
+|---|---|
+| `fastapi`, `uvicorn[standard]` | Web framework / ASGI server |
+| `yt-dlp` | YouTube metadata + audio download |
+| `faster-whisper` | Local speech-to-text fallback |
+| `opencc-python-reimplemented` | Simplified → Traditional Chinese normalization (`s2twp`) |
+| `google-genai` | Gemini API client |
+| `python-dotenv` | Loads `GEMINI_API_KEY` and other env vars from `.env` |
+
+No database driver, no task queue library, no frontend build tooling — `static/` is served as-is.
+
+---
+
+## 10. Known Technical Constraints
+
+- **Single worker thread** for the automatic Transcript→Study Note pipeline (`_pipeline_queue` / `_pipeline_worker_loop`): jobs for different videos are processed one at a time, in order. The 5 Learning Model endpoints deliberately bypass this queue.
+- **Stage Guard is forward-only**: once a stage is reached, re-requesting it never re-runs the work — this trades "can't force a re-run via the API" for "can never accidentally duplicate a finished stage."
+- **In-process queue is not durable across a crash mid-job**: `outputs/queue.json` is written after each mutation, but the stdlib `Queue` of pending jobs itself doesn't survive a restart — only the item's last-persisted status does, and that status is reset to a retryable state on load.
+- **Windows path-length limits**: Knowledge Package zip folder/file names are truncated to 50 characters and stripped of non-BMP characters (emoji) because Windows Explorer's built-in extractor both enforces `MAX_PATH=260` and rejects otherwise-valid zips containing non-BMP path characters.
+- **No login / no multi-user**: `queue_store` and `history_store` are single-process, single-user, file-backed state; nothing in the codebase supports concurrent independent users.
+- **Gemini calls are synchronous SDK calls** wrapped in `asyncio.to_thread()` at each call site that needs to avoid blocking the single uvicorn event loop; `gemini_client.py` itself does not use an async client.
+- **`GeminiConfigError`** (missing `GEMINI_API_KEY`) is raised before the observability interception point, so it is not captured by Error Intelligence — a one-time environment setup failure, not a runtime error.
+
+---
+
+## 11. Existing Engineering Conventions
+
+- **One artifact type, one module.** Each Learning Model output (`knowledge_outline.py`, `learning_blueprint.py`, `teach_back.py`, `action_list.py`, `review.py`) follows the same shape: a Gemini system-instruction prompt in `gemini_client.py`, a persistence module, and its own API route(s) — not a shared generic "artifact generator."
+- **Cache-first generation.** Every on-demand artifact checks for an existing file before calling Gemini again; this pattern is copied module-to-module rather than centralized.
+- **Downstream artifacts read upstream artifacts, not raw transcripts.** Teach Back / Action List / Review all read the already-generated Learning Blueprint rather than re-reading the transcript or re-deriving structure.
+- **Disk state over stored-path trust.** Completeness checks (download buttons, bulk export candidacy) verify the file exists on disk rather than trusting a stored path field, after this caused a real bug (stale path pointing to a deleted file).
+- **Best-effort, non-blocking observability.** Every write in `observability/` swallows its own failures; nothing in that module is allowed to raise into the main request path.
+- **Minimal-diff task scoping.** Each implemented task is scoped to touch only the files it needs to; unrelated refactors are explicitly deferred rather than bundled in (e.g. a known duplicated helper function was left in place until a third caller would justify moving it).
