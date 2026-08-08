@@ -50,3 +50,14 @@ desktop.ini
 # Claude Code local settings
 .claude/settings.local.json
 
+# YB Learn generated learning artifacts
+outputs/knowledge_outlines/
+outputs/learning_blueprints/
+outputs/teach_backs/
+outputs/action_lists/
+outputs/reviews/
+
+# YB Learn observability
+outputs/logs/
+outputs/reports/
+
