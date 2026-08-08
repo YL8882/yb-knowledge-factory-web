@@ -61,3 +61,11 @@ outputs/reviews/
 outputs/logs/
 outputs/reports/
 
+# YB Learn runtime state
+outputs/queue.json
+outputs/history.json
+
+# YB Learn user-generated core content
+outputs/study_notes/
+outputs/transcripts/
+
