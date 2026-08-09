@@ -5,6 +5,8 @@ OUTPUT_DIR = Path(__file__).parent.parent / "outputs" / "study_notes"
 
 _INVALID_FILENAME_CHARS = re.compile(r'[\\/:*?"<>|]')
 _TRANSCRIPT_MARKER = "## Transcript"
+_SUMMARY_HEADER = re.compile(r"^#\s*Summary\s*$", re.MULTILINE)
+_NEXT_HEADER = re.compile(r"^#\s+\S", re.MULTILINE)
 
 
 class TranscriptNotFoundError(Exception):
@@ -27,6 +29,23 @@ def extract_transcript_body(transcript_content: str) -> str:
     if idx == -1:
         return transcript_content.strip()
     return transcript_content[idx + len(_TRANSCRIPT_MARKER):].strip()
+
+
+def extract_summary(body: str) -> str:
+    """Reads the "# Summary" section back out of a generated Study Note
+    (Feature 003, decision 1-A): once Study Note exists, its own Summary
+    section becomes the Queue Card teaser — no separate quick_summary Gemini
+    call is made just to produce that one line. Returns "" if the section
+    isn't present (shouldn't happen for a real Gemini response, but this must
+    never raise on unexpected input).
+    """
+    match = _SUMMARY_HEADER.search(body)
+    if not match:
+        return ""
+    start = match.end()
+    next_header = _NEXT_HEADER.search(body, start)
+    end = next_header.start() if next_header else len(body)
+    return body[start:end].strip()
 
 
 def find_cached_study_note(video_id: str) -> Path | None:

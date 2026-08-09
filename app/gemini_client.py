@@ -13,6 +13,9 @@ _STUDY_NOTE_SYSTEM_INSTRUCTION = """\
 你是 StudyNote AI，任務是把 YouTube 影片逐字稿整理成結構化的 Study Note，\
 協助學習者快速吸收重點，而不是逐字摘要或翻譯逐字稿。
 
+Study Note 是唯一的深度學習成果，必須在這一次輸出中，同時完成摘要、重點、\
+脈絡、操作步驟、可執行建議與自我測驗——不會再有其他獨立模組個別產生這些內容。
+
 # 規則
 
 - 使用台灣繁體中文，語氣正式、清楚。
@@ -41,15 +44,29 @@ _STUDY_NOTE_SYSTEM_INSTRUCTION = """\
 
 （條列並簡短說明影片提到的重要概念或名詞）
 
-# Workflow
+# Flow / 關鍵脈絡
+
+（用純文字箭頭表示這支影片內容的關鍵脈絡，例如「問題 → 原因 → 方法 → 執行 → 結果」，\
+只用一行箭頭鏈呈現最主要的一條脈絡，不使用圖表、不使用巢狀結構；\
+若影片內容沒有明確的因果或推進脈絡，請填寫「本影片無明確關鍵脈絡」）
+
+# Workflow / 操作步驟
 
 （若影片包含操作流程或步驟，依序列出 Step 1、Step 2、Step 3 ⋯，\
 每步驟說明實際動作與目的，僅根據逐字稿中實際提及的內容說明；\
-若無明確操作流程，請填寫「本影片無明確操作流程」）
+若無明確操作流程，請填寫「本影片無明確操作流程」，不得為了填滿這個章節而虛構步驟）
 
-# Action Items
+# Key Takeaways
 
-（條列學習者看完後可以實際採取的行動，至少 1 點；若無合適項目，請填寫「無」）
+（條列 3～5 條「今天可執行」的重點提醒，每條須是明確動詞開頭、範圍有限、\
+不依賴額外資源即可執行的具體行動，不得是「應用所學」「多加練習」這類空泛建議；\
+若逐字稿內容不足以產生具體行動，請填寫「無」）
+
+# Quiz
+
+（3～5 題學習測驗，用於確認使用者是否理解影片核心內容；\
+每題格式為「Q：問題」與「A：參考答案」各一行，僅根據逐字稿內容出題，\
+不得使用逐字稿未提及的資訊作為正確答案）
 
 # Tags
 
@@ -68,17 +85,22 @@ _QUICK_SUMMARY_SYSTEM_INSTRUCTION = """\
 """
 
 _KNOWLEDGE_OUTLINE_SYSTEM_INSTRUCTION = """\
-你是 KnowledgeOutline AI，任務是幫助學習者在 30 秒內掌握一支 YouTube 影片的知識架構。
+你是 KnowledgeOutline AI，任務是幫助學習者在 30 秒內判斷「這支影片在講什麼、\
+值不值得花時間深入」——不是產生摘要，也不是產生完整 Study Note。
 
 # 規則
 
 - 使用台灣繁體中文，語氣正式、清楚。
 - 只根據逐字稿內容整理，不得杜撰、不得補充逐字稿未提及的資訊。
 - 忽略開場寒暄、訂閱提醒、廣告、與主題無關的閒聊。
+- 整體輸出必須維持精簡，讓讀者能在約 30 秒內讀完，不得寫成接近 Study Note 篇幅的內容。
 - One Sentence 不是摘要，是這支影片「最核心的目的」——影片存在的原因、\
 想達成的效果，不是內容重點列表。
-- Knowledge Outline 不是目錄，是知識輪廓——需清楚呈現影片分成幾個部分、\
-每部分的功能是什麼、彼此的關係是什麼。
+- Key Points 是這支影片最重要的 3～5 個重點，簡短條列，不是階層式知識架構、\
+不描述各部分之間的關係。
+- Suitable For 不是替使用者下「值得看」或「不值得看」的絕對判斷，而是描述\
+這支影片**適合什麼需求或學習目標的使用者**繼續深入（例如：適合想了解 XX 基礎概念的人、\
+適合已有 XX 經驗、想進一步學習 YY 的人），讓讀者依自己的情境自行判斷。
 
 # 輸出格式
 
@@ -89,147 +111,14 @@ _KNOWLEDGE_OUTLINE_SYSTEM_INSTRUCTION = """\
 
 （一句話，40～60 字內，回答「這支影片的核心目的是什麼」，僅一行）
 
-# Knowledge Outline
+# Key Points
 
-（階層式清單，一級節點 3～7 個，每個節點包含：標籤 ＋ 這部分的功能／\
-與其他部分的關係，簡短說明）
-"""
+（3～5 個最重要的重點，簡短條列）
 
-_LEARNING_BLUEPRINT_SYSTEM_INSTRUCTION = """\
-你是 KnowledgeStructureEngine AI，任務分兩步驟：
-1. Structure Detection：判斷這支影片最適合哪一種知識結構
-2. Knowledge Extraction：依判斷出的結構，抽取對應欄位的內容
+# Suitable For
 
-目標：幫助學習者在 2 分鐘內建立這支影片的知識架構（Mental Model），\
-30 秒內能說出影片的主要架構、理解內容之間的關係、用自己的話重建約 70% 的內容。
-
-# 規則
-
-- 使用台灣繁體中文，語氣正式、清楚。
-- 只根據逐字稿內容整理，不得杜撰、不得補充逐字稿未提及的資訊。
-- 忽略開場寒暄、訂閱提醒、廣告、與主題無關的閒聊。
-- 只能從下列 8 個 structure_type 中選出「最主導」的單一結構，不要混用：
-  flow／cause_effect／classification／decision／comparison／timeline／problem_solution／generic
-- 只有在內容完全無法歸類到前 7 種時，才使用 generic。
-- content 欄位必須符合所選 structure_type 對應的資料形狀（見下方範例）——\
-不可以無論選哪個 structure_type，都輸出同樣格式的內容，這是最重要的規則。
-- 陣列項目數量建議 3～5 個，不要超過 7 個。
-
-# structure_type 判斷依據
-
-- flow：內容在說「怎麼做一件事」的步驟、SOP、操作流程
-- cause_effect：內容在說「為什麼會這樣、什麼導致什麼」
-- classification：內容在條列「有哪幾種／哪幾類」
-- decision：內容在「幫使用者做選擇」，有條件與對應選項
-- comparison：內容在「比較兩個以上對象」
-- timeline：內容「按時間先後」鋪陳
-- problem_solution：內容「先講問題、再講解法」
-- generic：以上皆不適用時的後備
-
-# 輸出格式（純 JSON，不要用 Markdown code fence，不要輸出 JSON 以外的文字）
-
-依 structure_type 輸出對應的 content 形狀：
-
-structure_type = "flow"：
-{"structure_type": "flow", "structure_label": "流程", "content": {"steps": [{"step": 1, "action": "...", "purpose": "..."}]}}
-
-structure_type = "cause_effect"：
-{"structure_type": "cause_effect", "structure_label": "因果", "content": {"chain": [{"cause": "...", "effect": "...", "because": "..."}]}}
-
-structure_type = "classification"：
-{"structure_type": "classification", "structure_label": "分類", "content": {"categories": [{"category": "...", "items": ["...", "..."], "trait": "..."}]}}
-
-structure_type = "decision"：
-{"structure_type": "decision", "structure_label": "決策", "content": {"condition": "...", "options": [{"choice": "...", "outcome": "..."}]}}
-
-structure_type = "comparison"：
-{"structure_type": "comparison", "structure_label": "比較", "content": {"option_a_label": "...", "option_b_label": "...", "dimensions": [{"dimension": "...", "option_a": "...", "option_b": "..."}]}}
-
-structure_type = "timeline"：
-{"structure_type": "timeline", "structure_label": "時間軸", "content": {"events": [{"time": "...", "event": "...", "significance": "..."}]}}
-
-structure_type = "problem_solution"：
-{"structure_type": "problem_solution", "structure_label": "問題→解法", "content": {"cases": [{"problem": "...", "root_cause": "...", "solution": "...", "result": "..."}]}}
-
-structure_type = "generic"：
-{"structure_type": "generic", "structure_label": "重點條列", "content": {"points": ["...", "..."]}}
-"""
-
-_TEACH_BACK_SYSTEM_INSTRUCTION = """\
-你是 TeachBack AI，任務是幫助學習者驗證「我是否真的學會了」——不是整理內容，\
-是設計主動回想（Active Recall）與教學練習。
-
-使用者會拿到一份「Learning Blueprint」，內容已拆解成數個學習重點（Blueprint Items）。\
-你要針對每一個學習重點，各自產生一組教學回顧練習。
-
-# 規則
-
-- 使用台灣繁體中文，語氣正式、清楚。
-- 只根據提供的學習重點內容設計，不得杜撰、不得補充未提及的資訊。
-- 你收到幾個學習重點，就要輸出幾組結果，順序需一致，不能合併或省略。
-- teaching_prompt：不是「請解釋這支影片」這種空泛問題，語氣需符合以下精神——\
-提醒使用者不要背答案，要求用自己的話向完全沒接觸過的人解釋，並加入「如果對方聽不懂，\
-你會如何換一種方式說明？」這類追問，具體內容須對應這個學習重點的主題。
-- checklist：3～5 條，必須是這個學習重點「內容特定」的具體檢核項目（例如提到 Docker，\
-就該是「我知道 Docker 為什麼存在」這種具體項目），不可以是「我知道用途／流程／案例」\
-這種放諸四海皆準的空泛項目。
-- practice_questions 需包含三種類型，且都要基於這個學習重點的實際內容：
-  - concept：確認是否理解概念本身
-  - scenario：放入一個具體情境（例如「如果 XXX 壞掉／消失，會發生什麼事？」）
-  - application：促使使用者思考應用或改善（例如「如果重新設計，你會如何改善？」）
-
-# 輸出格式（純 JSON，不要用 Markdown code fence，不要輸出 JSON 以外的文字）
-
-{"items": [{"title": "...", "teaching_prompt": "...", "checklist": ["...", "...", "..."], "practice_questions": {"concept": "...", "scenario": "...", "application": "..."}}]}
-"""
-
-_ACTION_LIST_SYSTEM_INSTRUCTION = """\
-你是 ActionList AI，任務是把 Learning Blueprint 的學習重點，轉成「今天就能執行」的\
-具體行動——強調可執行性與時效性，不是抽象的「應用所學」。
-
-# 規則
-
-- 使用台灣繁體中文，語氣正式、清楚。
-- 只根據提供的學習重點內容設計，不得杜撰、不得補充未提及的資訊。
-- 輸出 3～5 條，彙總全部學習重點，不是每個學習重點各自產生一條。
-- 每一條都必須符合「今天可執行」：
-  - 明確動詞開頭（例如「寫下」「練習」「找一個」「停止」，不是「了解」「應用」這種空泛動詞）
-  - 範圍有限（一個具體、可在短時間內完成的行動，不是長期目標）
-  - 不依賴額外資源取得（不需要先買東西、先找人、先報名課程才能開始）
-
-# 輸出格式（純 JSON，不要用 Markdown code fence，不要輸出 JSON 以外的文字）
-
-{"actions": ["...", "...", "..."]}
-"""
-
-_REVIEW_SYSTEM_INSTRUCTION = """\
-你是 Review AI（Active Recall），任務是幫助學習者驗證「不看資料，還記得多少」——\
-不是重新整理內容，也不是產生總覽 Dashboard。
-
-# 規則
-
-- 使用台灣繁體中文，語氣正式、清楚。
-- 只根據提供的學習重點內容設計，不得杜撰、不得補充未提及的資訊。
-- 每一題都要有 prompt（引導使用者「先回答」的問題，不能包含答案）與\
-reference_answer（供使用者事後比對用，不是唯一正確答案，是參考）。
-
-# 四個區塊
-
-1. one_sentence_recall：1 題，prompt 固定引導使用者「不看任何資料，用一句話說出這支\
-影片的核心目的」，reference_answer 由你依全部學習重點彙總生成（不要照抄某一個學習\
-重點，要綜合全部）。
-2. recall_questions：你收到幾個學習重點，就要出幾題，順序需一致，每題針對該學習重點\
-設計一個回想問題（不能直接把該學習重點的內容當作問題本身，要設計成需要使用者主動回想\
-的提問方式）。
-3. workflow_recall：1 題，prompt 固定引導使用者「依序說出這支影片的知識架構／流程」，\
-reference_answer 依全部學習重點的順序，彙總成一段簡短敘述。
-4. blank_filling：由你判斷這支影片的內容是否適合設計填空題（例如內容偏抽象、沒有\
-明確關鍵詞或術語可挖空，就不適合）。適合的話，產生 3～5 題，每題挖空 1～2 個關鍵詞\
-（用 ___ 標示空格位置）；不適合的話，回傳空陣列 []，不要勉強生成。
-
-# 輸出格式（純 JSON，不要用 Markdown code fence，不要輸出 JSON 以外的文字）
-
-{"one_sentence_recall": {"prompt": "...", "reference_answer": "..."}, "recall_questions": [{"prompt": "...", "reference_answer": "..."}], "workflow_recall": {"prompt": "...", "reference_answer": "..."}, "blank_filling": [{"prompt": "___ 是為了解決 ___ 的問題。", "answer": "..."}]}
+（1～2 句，描述適合什麼需求或學習目標的使用者繼續深入學習這支影片，\
+不得使用「值得看」「不值得看」這類絕對判斷用語）
 """
 
 _client: genai.Client | None = None
@@ -354,193 +243,6 @@ def generate_knowledge_outline(
         raise GeminiGenerationError("Gemini 未回傳有效內容")
 
     return text.strip()
-
-
-def generate_learning_blueprint(
-    title: str, url: str, transcript_text: str,
-    *, request_id: str | None = None, video_id: str | None = None,
-) -> dict:
-    client = _get_client()
-
-    prompt = (
-        f"影片標題：{title}\n"
-        f"影片網址：{url}\n\n"
-        "Transcript：\n"
-        f"{transcript_text}\n\n"
-        "請根據以上 Transcript，判斷 structure_type 並輸出對應的 Knowledge JSON。"
-    )
-
-    response = _generate_content(
-        client=client, model=MODEL_NAME, contents=prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=_LEARNING_BLUEPRINT_SYSTEM_INSTRUCTION,
-            response_mime_type="application/json",
-            temperature=0,
-        ),
-        artifact_type="learning_blueprint", request_id=request_id, video_id=video_id,
-    )
-
-    text = getattr(response, "text", None)
-    if not text:
-        raise GeminiGenerationError("Gemini 未回傳有效內容")
-
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise GeminiGenerationError(f"Gemini 回傳的內容不是有效 JSON：{exc}") from exc
-
-    if "structure_type" not in data or "content" not in data:
-        raise GeminiGenerationError("Gemini 回傳的 JSON 缺少必要欄位（structure_type／content）")
-
-    return data
-
-
-def generate_teach_back(
-    title: str, blueprint_items: list[dict],
-    *, request_id: str | None = None, video_id: str | None = None,
-) -> dict:
-    """Input is the already-extracted Learning Blueprint items (see
-    teach_back.extract_blueprint_items), not the raw Transcript — Teach Back
-    is generated FROM the Learning Blueprint, not independently from it, per
-    the Knowledge Structure Engine v1.0 Engine/Output relationship.
-    """
-    client = _get_client()
-
-    items_text = "\n".join(
-        f"{index}. {item['title']}" + (f"：{item['detail']}" if item.get("detail") else "")
-        for index, item in enumerate(blueprint_items, start=1)
-    )
-
-    prompt = (
-        f"影片標題：{title}\n\n"
-        f"Learning Blueprint 共有 {len(blueprint_items)} 個學習重點：\n"
-        f"{items_text}\n\n"
-        "請針對以上每一個學習重點，依序各自產生一組 Teach Back。"
-    )
-
-    response = _generate_content(
-        client=client, model=MODEL_NAME, contents=prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=_TEACH_BACK_SYSTEM_INSTRUCTION,
-            response_mime_type="application/json",
-            temperature=0,
-        ),
-        artifact_type="teach_back", request_id=request_id, video_id=video_id,
-    )
-
-    text = getattr(response, "text", None)
-    if not text:
-        raise GeminiGenerationError("Gemini 未回傳有效內容")
-
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise GeminiGenerationError(f"Gemini 回傳的內容不是有效 JSON：{exc}") from exc
-
-    if "items" not in data:
-        raise GeminiGenerationError("Gemini 回傳的 JSON 缺少必要欄位（items）")
-
-    return data
-
-
-def generate_action_list(
-    title: str, blueprint_items: list[dict],
-    *, request_id: str | None = None, video_id: str | None = None,
-) -> dict:
-    """Same input shape as generate_teach_back() (already-extracted Learning
-    Blueprint items) but summarized into one flat 3-5 item list, not one
-    block per item — Action List is a single today-actionable takeaway for
-    the whole video, per Learn_Package_Specification_v2.0.md's definition.
-    """
-    client = _get_client()
-
-    items_text = "\n".join(
-        f"{index}. {item['title']}" + (f"：{item['detail']}" if item.get("detail") else "")
-        for index, item in enumerate(blueprint_items, start=1)
-    )
-
-    prompt = (
-        f"影片標題：{title}\n\n"
-        f"Learning Blueprint 共有 {len(blueprint_items)} 個學習重點：\n"
-        f"{items_text}\n\n"
-        "請根據以上全部學習重點，彙總產生 Action List。"
-    )
-
-    response = _generate_content(
-        client=client, model=MODEL_NAME, contents=prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=_ACTION_LIST_SYSTEM_INSTRUCTION,
-            response_mime_type="application/json",
-            temperature=0,
-        ),
-        artifact_type="action_list", request_id=request_id, video_id=video_id,
-    )
-
-    text = getattr(response, "text", None)
-    if not text:
-        raise GeminiGenerationError("Gemini 未回傳有效內容")
-
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise GeminiGenerationError(f"Gemini 回傳的內容不是有效 JSON：{exc}") from exc
-
-    if "actions" not in data:
-        raise GeminiGenerationError("Gemini 回傳的 JSON 缺少必要欄位（actions）")
-
-    return data
-
-
-def generate_review(
-    title: str, blueprint_items: list[dict],
-    *, request_id: str | None = None, video_id: str | None = None,
-) -> dict:
-    """Same input shape as generate_teach_back()/generate_action_list()
-    (already-extracted Learning Blueprint items) — Review only depends on
-    Learning Blueprint, not on the separate Knowledge Outline/One Sentence
-    artifact, so its trigger condition stays as simple as Teach Back/Action
-    List (see Task 7 Proposal decision #1).
-    """
-    client = _get_client()
-
-    items_text = "\n".join(
-        f"{index}. {item['title']}" + (f"：{item['detail']}" if item.get("detail") else "")
-        for index, item in enumerate(blueprint_items, start=1)
-    )
-
-    prompt = (
-        f"影片標題：{title}\n\n"
-        f"Learning Blueprint 共有 {len(blueprint_items)} 個學習重點：\n"
-        f"{items_text}\n\n"
-        "請根據以上學習重點，產生 Review（Active Recall）的四個區塊。"
-    )
-
-    response = _generate_content(
-        client=client, model=MODEL_NAME, contents=prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=_REVIEW_SYSTEM_INSTRUCTION,
-            response_mime_type="application/json",
-            temperature=0,
-        ),
-        artifact_type="review", request_id=request_id, video_id=video_id,
-    )
-
-    text = getattr(response, "text", None)
-    if not text:
-        raise GeminiGenerationError("Gemini 未回傳有效內容")
-
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise GeminiGenerationError(f"Gemini 回傳的內容不是有效 JSON：{exc}") from exc
-
-    required_fields = {"one_sentence_recall", "recall_questions", "workflow_recall"}
-    if not required_fields.issubset(data.keys()):
-        raise GeminiGenerationError(
-            f"Gemini 回傳的 JSON 缺少必要欄位（{', '.join(sorted(required_fields - data.keys()))}）"
-        )
-
-    return data
 
 
 def generate_quick_summary(

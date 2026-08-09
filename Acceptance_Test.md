@@ -667,6 +667,61 @@ HTTP Error 429: Too Many Requests
 
 ---
 
+## Feature 003 — Decouple Study Note & Quick Summary from the Automatic Pipeline（Human Test 進行中）
+
+依 Phase A（Cost Control Audit）與 Phase B（Freemium Boundary）Proposal 執行,核心目標：加入新 URL 後只自動產生 Transcript（FREE / LOCAL),Quick Summary 與 Study Note 改為使用者主動觸發,Rapid Learning／Learning Blueprint 顯示條件由 `hasStudyNote` 改為 `hasTranscript`（Decision 2-B),Teach Back／Action List／Review 依賴關係不變。本節於 Human Test 過程中持續記錄,尚未完成全部驗收。
+
+**Human Test Step 1（AC：新影片加入後,Transcript 完成期間 Gemini 呼叫 = 0）— 核心指標 PASS,發現並修正一個 UI 文字 Bug：**
+
+測試影片 `fqwSa9iSIDU`。交叉比對 `outputs/queue.json`（`status: "Transcript Ready"`）、`outputs/logs/gemini_usage.jsonl`（0 筆)、`outputs/logs/errors.jsonl`（0 筆)、`outputs/logs/cache.jsonl`（僅 1 筆 `transcript` miss,無任何 `study_note` 相關紀錄),確認 Gemini 真實新增呼叫次數為 0,`study_note_path` 未寫入,後端從未執行 `_do_generate_study_note()`。核心指標 PASS。
+
+**發現的 UI Bug（非 Gemini 呼叫問題,純顯示文字問題）：** Queue Card 右上角狀態徽章顯示「Generating Study Note」,卡片下方顯示「Transcript 已完成並下載，Study Note 產生中...」,即使背景完全沒有執行任何動作。
+
+**Root Cause：** Feature 003 已經在後端移除 `_auto_generate_transcript()` 對 Study Note 的自動接續呼叫,但前端 `app/static/script.js` 保留了兩處舊 automatic pipeline 時代（Study Note 自動接續產生)的假設文字：
+1. `DISPLAY_STATE_MAP['Transcript Ready']` 寫死對應顯示文字 `'Generating Study Note'`（假設「Transcript Ready」只是轉瞬即逝、即將自動變成「Generating」的中間狀態）
+2. `buildReportLine()` 的 `if (hasTranscript)` 分支寫死文字「Study Note 產生中...」,註解明確寫著「Transient state — Study Note generation auto-follows Transcript」
+
+兩者皆為單純的前端字串顯示,沒有任何 fetch／API 呼叫依附其上,不會觸發任何背景動作,經 log 交叉比對確認背景真的沒有執行 Study Note 生成。
+
+**最小修正（已執行,待重新 Human Test 驗證）：**
+- `DISPLAY_STATE_MAP['Transcript Ready']` 改為 `'Transcript Ready'`
+- `buildReportLine()` 對應文字改為「✓ Transcript 已完成，可選擇產生 Study Note 或其他學習功能。」,並更新過時註解
+
+僅修改 `app/static/script.js` 這兩處文字與其註解。未修改後端、Gemini 呼叫邏輯、按鈕行為、Freemium／Paywall 邏輯,未擴大 Feature 003 Scope。`node --check` 語法檢查通過。
+
+**尚待進行**：重新執行 Human Test Step 1 確認文字修正後顯示正確,以及 Step 2 以後的其餘 Acceptance Criteria。
+
+### Feature 003 Revised Scope — Freemium / Cost-Control Architecture 收斂
+
+Human Review 決定調整 Feature 003 Scope（不建立 Feature 004）：移除 Learning Blueprint／Teach Back／Action List／Review 四個獨立模組（endpoint、Gemini 呼叫、前端渲染、cache 全部移除),有價值的內容能力整合進 Study Note（Flow／Workflow／Key Takeaways／Quiz),Rapid Learning 正式更名「30秒快速學習」,維持 Transcript = 0 Gemini calls、Study Note／30秒快速學習各自 1 次呼叫的成本架構。詳細 Proposal 見對話記錄（Revised Feature 003 Proposal,A-H 段)。
+
+實作：刪除 `app/learning_blueprint.py`／`teach_back.py`／`action_list.py`／`review.py`；`app/main.py` 移除對應 7 個 endpoints；`app/gemini_client.py` 移除 4 個 `generate_*()` 函式與 System Instruction,擴充 `_STUDY_NOTE_SYSTEM_INSTRUCTION` 為 8 章節,`_KNOWLEDGE_OUTLINE_SYSTEM_INSTRUCTION` 改為 3 章節（One Sentence／Key Points／Suitable For);`app/static/script.js` 移除對應前端邏輯,Rapid Learning 更名「30秒快速學習」。
+
+**Frontend Regression（97 → 0）— 已發現、已修復、已 Human Test 確認 PASS：**
+
+移除 4 個模組時,用整段刪除方式（涵蓋約 900 行)一次移除 Learning Blueprint／Teach Back／Action List／Review 的所有相關程式碼,誤將 Rapid Learning 仍在使用的**共用**函式 `buildModuleToggleHeader()`（Sprint 8 Task 2 起即存在)一併刪除。
+
+**症狀**：加入新影片後,Queue 頁面短暫正常顯示全部項目,約 1.5 秒內（既有項目觸發背景 Knowledge Outline 快取讀取後)自動清空為「尚無項目」,且持續無法恢復。
+
+**Root Cause**：`renderQueue()` 處理到任何一個 `knowledgeOutlineCache` 已有值的項目時,呼叫 `buildRapidLearningSection()` → 內部呼叫已被誤刪的 `buildModuleToggleHeader()` → `ReferenceError` → 例外向上拋出 → `loadQueue()` 的 `catch` 區塊執行 `renderQueue([])` 清空整個列表。已用唯讀 Node.js 模擬（載入真實 `script.js`、真實 97 筆 Queue 資料、真實既有 Knowledge Outline 快取檔案內容)重現此例外,確認為程式碼精確位置,非環境或快取問題（過程中已排除瀏覽器快取、雙 Server process 等假設)。
+
+**Minimal Fix**：於 `app/static/script.js` 重新加回 `buildModuleToggleHeader()` 函式定義（內容與原版本相同),不恢復已移除的 4 個模組本身。Self Test：唯讀模擬兩輪 render（empty cache／29 筆真實快取內容已填入)皆不再拋出例外。
+
+**Human Test — PASS：** 強制重新整理後 Queue Cards 正常顯示,等待多輪 polling 後未再消失；Transcript Ready／Study Note Ready 卡片皆正常；「30秒快速學習」正常顯示；Learning Blueprint／Teach Back／Action List／Review 確認不再出現。
+
+僅修改 `app/static/script.js`（新增 1 個函式)。未修改後端、Gemini 呼叫邏輯、未新增功能。
+
+**Human Test Step 1-4（Revised Scope Acceptance Criteria）— 全數 PASS：**
+
+- **Step 1（AC1,重新測試)**：`ZqK8q5fymXQ` 加入後只自動產生 Transcript,`gemini_usage.jsonl` 於 Transcript 完成當下 0 筆,只出現「產生 Study Note」「30秒快速學習」兩個入口 — PASS
+- **Step 2（AC3,30秒快速學習新格式)**：點擊後新增剛好 1 筆 `artifact_type: "knowledge_outline"`,內容含一句話／5 個重點／「適合繼續深入」三段,精簡、無「展開完整內容」次層按鈕 — PASS
+- **Step 3（AC4,Study Note 8 章節新格式)**：點擊後新增剛好 1 筆 `artifact_type: "study_note"`（該影片累計 2 筆,無其他非預期呼叫),實際檔案確認 8 章節標題順序正確（Summary／Key Points／Important Concepts／Flow 關鍵脈絡／Workflow 操作步驟／Key Takeaways／Quiz／Tags),抽查 Flow（純文字箭頭)、Workflow（Step 1/2...)、Quiz（Q/A)內容品質皆符合規格 — PASS
+- **Step 4（AC5,Study Note Ready 最終按鈕配置)**：只顯示「30秒快速學習」（可收合)與「下載知識包」,無「產生 Study Note」按鈕,無 Learning Blueprint／Teach Back／Action List／Review — PASS
+
+**尚未正式驗收（下次繼續)**：AC6（舊卡片—先前已有 Learning Blueprint 等 artifact 的歷史項目—不再顯示這些內容,已於 Frontend Regression 的 Human Test 中非正式觀察到成立,但未列為獨立步驟正式記錄)、Regression Test G 段（Queue／History／Download／Export 完整迴歸)尚未逐項執行。
+
+---
+
 # MVP Acceptance
 
 The Lite MVP is complete when:

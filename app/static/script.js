@@ -22,6 +22,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // re-fetching the same file on every poll tick while other items are busy.
     let displayedStudyNoteVideoId = null;
 
+    // Feature 003: guards startStudyNote() the same way the *FetchInFlight
+    // sets below guard their own trigger — Study Note is now user-triggered
+    // instead of auto-chained after Transcript.
+    const studyNoteFetchInFlight = new Set();
+
     // Rapid Learning Engine (Sprint 7, Task 1): One Sentence + Knowledge Outline
     // text keyed by video_id, populated once fetched/generated. renderQueue()
     // rebuilds every <li> from scratch on each poll tick, so a per-card DOM
@@ -36,64 +41,18 @@ document.addEventListener('DOMContentLoaded', function() {
     // still in flight.
     const knowledgeOutlineFetchInFlight = new Set();
 
-    // Quick Learn Layer (Sprint 7, Task 2): video_ids whose full Knowledge
-    // Outline is currently expanded — a pure UI-state set (no fetch behind
-    // it), consulted on every renderQueue() rebuild so the toggle survives a
-    // re-render triggered by an unrelated action elsewhere in the list.
-    const expandedKnowledgeOutlineCards = new Set();
-
-    // Learning Blueprint Engine (Sprint 7, Task 3): raw Learning Blueprint
-    // text keyed by video_id. Independent of knowledgeOutlineCache above —
-    // this is a separate, additive artifact, not a replacement (that switch
-    // is Task 4's job). Same cache-across-renders reasoning as Task 1.
-    const learningBlueprintCache = new Map();
-
-    // Guards fetchLearningBlueprintIntoCache() the same way
-    // knowledgeOutlineFetchInFlight guards its Knowledge Outline counterpart.
-    const learningBlueprintFetchInFlight = new Set();
-
-    // Teach Back (Sprint 7, Task 5): structured Teach Back JSON keyed by
-    // video_id. Same cache-across-renders reasoning as learningBlueprintCache.
-    const teachBackCache = new Map();
-
-    // Guards fetchTeachBackIntoCache() the same way learningBlueprintFetchInFlight
-    // guards its Learning Blueprint counterpart.
-    const teachBackFetchInFlight = new Set();
-
-    // Action List (Sprint 7, Task 6): structured Action List JSON keyed by
-    // video_id. Same cache-across-renders reasoning as teachBackCache.
-    const actionListCache = new Map();
-
-    // Guards fetchActionListIntoCache() the same way teachBackFetchInFlight
-    // guards its Teach Back counterpart.
-    const actionListFetchInFlight = new Set();
-
-    // Review (Sprint 7, Task 7): structured Review JSON keyed by video_id.
-    // Same cache-across-renders reasoning as actionListCache.
-    const reviewCache = new Map();
-
-    // Guards fetchReviewIntoCache() the same way actionListFetchInFlight
-    // guards its Action List counterpart.
-    const reviewFetchInFlight = new Set();
-
-    // Show/Hide Reference Answer state per question (Task 7) — keyed by a
-    // synthetic "videoId::sectionKey::index" string so state survives the
-    // full renderQueue() rebuild every poll tick, same pattern as
-    // expandedKnowledgeOutlineCards (Task 2).
-    const revealedReviewAnswers = new Set();
-
     // Task 2 (Sprint 8): independent collapse state per module per video —
-    // NOT an accordion (no mutual exclusion, no "only one open" rule; each
-    // Set below is its own module and doesn't touch the others). A card only
-    // appears here once collapsed, same persistence pattern as
-    // expandedKnowledgeOutlineCards above.
+    // NOT an accordion (no mutual exclusion, no "only one open" rule). A card
+    // only appears here once collapsed, same persistence pattern as
+    // collapsedDefaultsSeeded below. Feature 003 Revised Scope: Learning
+    // Blueprint / Teach Back / Action List / Review removed as independent
+    // modules (folded into Study Note or retired), and the old "展開完整內容"
+    // sub-toggle for a fuller Knowledge Outline is gone too (see
+    // buildRapidLearningSection) — only Rapid Learning ("30秒快速學習") keeps
+    // its own collapse state.
     const collapsedRapidLearningCards = new Set();
-    const collapsedLearningBlueprintCards = new Set();
-    const collapsedTeachBackCards = new Set();
-    const collapsedActionListCards = new Set();
-    const collapsedReviewCards = new Set();
 
-    // Feature 002: video_ids that have already had the sets above seeded
+    // Feature 002: video_ids that have already had the set above seeded
     // with a default-collapsed state. Without this guard, renderQueue()
     // rebuilding every poll tick would re-add a video_id the user just
     // expanded, undoing their click on the next tick.
@@ -558,7 +517,7 @@ document.addEventListener('DOMContentLoaded', function() {
         'Queued': 'Waiting',
         'Downloading': 'Processing',
         'Transcribing': 'Processing',
-        'Transcript Ready': 'Generating Study Note',
+        'Transcript Ready': 'Transcript Ready',
         'Generating': 'Generating Study Note',
         'Study Note Ready': 'Completed',
     };
@@ -595,10 +554,11 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         if (hasTranscript) {
-            // Transient state — Study Note generation auto-follows Transcript
-            // (see main.py _auto_generate_transcript), so this only shows briefly.
+            // Feature 003: Study Note is no longer auto-chained after
+            // Transcript — this state is now stable (not transient) until
+            // the user triggers Study Note or another module themselves.
             p.className = 'queue-item-report';
-            p.textContent = '✓ Transcript 已完成並下載，Study Note 產生中...';
+            p.textContent = '✓ Transcript 已完成，可選擇產生 Study Note 或其他學習功能。';
             return p;
         }
 
@@ -647,10 +607,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!collapsedDefaultsSeeded.has(item.video_id)) {
                 collapsedDefaultsSeeded.add(item.video_id);
                 collapsedRapidLearningCards.add(item.video_id);
-                collapsedLearningBlueprintCards.add(item.video_id);
-                collapsedTeachBackCards.add(item.video_id);
-                collapsedActionListCards.add(item.video_id);
-                collapsedReviewCards.add(item.video_id);
             }
 
             const li = document.createElement('li');
@@ -742,83 +698,31 @@ document.addEventListener('DOMContentLoaded', function() {
                 li.appendChild(retryBtn);
             }
 
-            // Rapid Learning Engine (Sprint 7, Task 1): per-card, not a shared
-            // page-level panel — appears once Study Note is ready (Queue stays
-            // a pure inbox; this is where "learning" starts), expands in place
-            // on this same card, never navigates elsewhere on the page.
-            if (hasStudyNote) {
+            // Study Note (Feature 003): user-triggered instead of auto-chained
+            // after Transcript — same cost-control pattern as the 5 Learning
+            // Model modules below. Once generated, the existing report
+            // line / auto-download / download-button logic above and below
+            // takes over unchanged; this only covers the "not yet" state.
+            if (hasTranscript && !hasStudyNote) {
+                li.appendChild(buildTriggerButton(
+                    '📓', '產生 Study Note', item.video_id, studyNoteFetchInFlight, startStudyNote
+                ));
+            }
+
+            // Rapid Learning Engine (Sprint 7, Task 1), UI renamed to
+            // "30秒快速學習" (Feature 003 Revised Scope): per-card, not a
+            // shared page-level panel. Gate is hasTranscript, not
+            // hasStudyNote — this is the one independent quick-AI entry
+            // point that doesn't require Study Note. Expands in place on
+            // this same card, never navigates elsewhere on the page.
+            if (hasTranscript) {
                 if (knowledgeOutlineCache.has(item.video_id)) {
                     li.appendChild(buildRapidLearningSection(item.video_id, knowledgeOutlineCache.get(item.video_id)));
                 } else if (item.knowledge_outline_path) {
                     fetchKnowledgeOutlineIntoCache(item.video_id);
                 } else {
                     li.appendChild(buildTriggerButton(
-                        '🧠', '開始快速學習', item.video_id, knowledgeOutlineFetchInFlight, startRapidLearning
-                    ));
-                }
-            }
-
-            // Learning Blueprint Engine (Sprint 7, Task 3): independent
-            // additive button, same hasStudyNote gate as Rapid Learning above
-            // but its own trigger — doesn't require Knowledge Outline to
-            // already exist. MVP display only (raw text block); UI/reading
-            // experience polish is Task 4's job.
-            if (hasStudyNote) {
-                if (learningBlueprintCache.has(item.video_id)) {
-                    li.appendChild(buildLearningBlueprintSection(item.video_id, learningBlueprintCache.get(item.video_id)));
-                } else if (item.learning_blueprint_path) {
-                    fetchLearningBlueprintIntoCache(item.video_id);
-                } else {
-                    li.appendChild(buildTriggerButton(
-                        '🗺️', '建立知識架構', item.video_id, learningBlueprintFetchInFlight, startLearningBlueprint
-                    ));
-                }
-            }
-
-            // Teach Back (Sprint 7, Task 5): second Knowledge Structure Engine
-            // Output, generated FROM the Learning Blueprint — button only
-            // appears once a Learning Blueprint exists (cached client-side or
-            // already on disk), mirroring the hasStudyNote gate pattern above.
-            const hasLearningBlueprint = learningBlueprintCache.has(item.video_id) || Boolean(item.learning_blueprint_path);
-            if (hasLearningBlueprint) {
-                if (teachBackCache.has(item.video_id)) {
-                    li.appendChild(buildTeachBackSection(item.video_id, teachBackCache.get(item.video_id)));
-                } else if (item.teach_back_path) {
-                    fetchTeachBackIntoCache(item.video_id);
-                } else {
-                    li.appendChild(buildTriggerButton(
-                        '📝', '開始 Teach Back', item.video_id, teachBackFetchInFlight, startTeachBack
-                    ));
-                }
-            }
-
-            // Action List (Sprint 7, Task 6): third Knowledge Structure Engine
-            // Output, generated FROM the Learning Blueprint — same gate as
-            // Teach Back above (Learning Blueprint must already exist), but
-            // independent of Teach Back itself (neither depends on the other).
-            if (hasLearningBlueprint) {
-                if (actionListCache.has(item.video_id)) {
-                    li.appendChild(buildActionListSection(item.video_id, actionListCache.get(item.video_id)));
-                } else if (item.action_list_path) {
-                    fetchActionListIntoCache(item.video_id);
-                } else {
-                    li.appendChild(buildTriggerButton(
-                        '✅', '開始 Action List', item.video_id, actionListFetchInFlight, startActionList
-                    ));
-                }
-            }
-
-            // Review (Sprint 7, Task 7): fourth Knowledge Structure Engine
-            // Output (Active Recall), generated FROM the Learning Blueprint —
-            // same gate as Teach Back/Action List, independent of both.
-            if (hasLearningBlueprint) {
-                if (reviewCache.has(item.video_id)) {
-                    li.appendChild(buildReviewSection(item.video_id, reviewCache.get(item.video_id)));
-                } else if (item.review_path) {
-                    fetchReviewIntoCache(item.video_id);
-                } else {
-                    li.appendChild(buildTriggerButton(
-                        '🔄', '開始 Review', item.video_id, reviewFetchInFlight, startReview
+                        '🧠', '30秒快速學習', item.video_id, knowledgeOutlineFetchInFlight, startRapidLearning
                     ));
                 }
             }
@@ -897,17 +801,57 @@ document.addEventListener('DOMContentLoaded', function() {
         };
     }
 
-    // Rapid Learning Engine (Sprint 7, Task 1): splits the single Markdown blob
-    // the backend returns (# One Sentence + # Knowledge Outline headers) into
-    // the two sections, so each can be rendered as its own labeled block on
-    // the card instead of one undifferentiated text dump.
+    // Rapid Learning Engine (Sprint 7, Task 1), Feature 003 Revised Scope:
+    // splits the single Markdown blob the backend returns (# One Sentence +
+    // # Key Points + # Suitable For headers) into three sections, so each
+    // can be rendered as its own labeled block — "30秒快速學習" answers
+    // "what is this about / what are the key points / who is this suited
+    // for", not a full Knowledge Outline anymore.
     function parseKnowledgeOutline(rawText) {
-        const oneSentenceMatch = rawText.match(/#\s*One Sentence\s*\n+([\s\S]*?)(?=\n#\s*Knowledge Outline|$)/i);
-        const outlineMatch = rawText.match(/#\s*Knowledge Outline\s*\n+([\s\S]*)/i);
+        const oneSentenceMatch = rawText.match(/#\s*One Sentence\s*\n+([\s\S]*?)(?=\n#\s*Key Points|$)/i);
+        const keyPointsMatch = rawText.match(/#\s*Key Points\s*\n+([\s\S]*?)(?=\n#\s*Suitable For|$)/i);
+        const suitableForMatch = rawText.match(/#\s*Suitable For\s*\n+([\s\S]*)/i);
         return {
             oneSentence: oneSentenceMatch ? oneSentenceMatch[1].trim() : rawText.trim(),
-            knowledgeOutline: outlineMatch ? outlineMatch[1].trim() : '',
+            keyPoints: keyPointsMatch ? keyPointsMatch[1].trim() : '',
+            suitableFor: suitableForMatch ? suitableForMatch[1].trim() : '',
         };
+    }
+
+    // Study Note (Feature 003): manual, opt-in trigger — mirrors
+    // startLearningBlueprint()'s shape but hits the pre-existing
+    // /study-note endpoint (previously only reachable via the automatic
+    // pipeline). No client-side content cache needed: Study Note isn't
+    // rendered inline, only downloaded, so a successful loadQueue() picking
+    // up the new study_note_path/status from the backend is enough.
+    async function startStudyNote(videoId, button) {
+        if (studyNoteFetchInFlight.has(videoId)) {
+            return;
+        }
+        studyNoteFetchInFlight.add(videoId);
+        button.disabled = true;
+        clearInlineError(button);
+        try {
+            const response = await fetch(
+                '/api/queue/' + encodeURIComponent(videoId) + '/study-note',
+                { method: 'POST' }
+            );
+            const data = await response.json();
+            if (!response.ok) {
+                const message = data.detail || '產生 Study Note 失敗';
+                showStatus(message, 'error');
+                showInlineError(button, message);
+                button.disabled = false;
+                return;
+            }
+            await loadQueue();
+        } catch (error) {
+            showStatus('網路連線失敗', 'error');
+            showInlineError(button, '網路連線失敗');
+            button.disabled = false;
+        } finally {
+            studyNoteFetchInFlight.delete(videoId);
+        }
     }
 
     // Manual, opt-in trigger for One Sentence + Knowledge Outline — bound to
@@ -993,329 +937,35 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Learning Blueprint Engine (Sprint 7, Task 3): manual, opt-in trigger —
-    // mirrors startRapidLearning()'s shape but hits the separate
-    // /learning-blueprint endpoint and its own cache.
-    async function startLearningBlueprint(videoId, button) {
-        if (learningBlueprintFetchInFlight.has(videoId)) {
-            return;
+    // Quick Learn Layer (Sprint 7, Task 2): pulls up to `maxCount` top-level
+    // list items out of the existing Knowledge Outline text — a pure UI-layer
+    // condensation of content Task 1 already generated, not a new Gemini call.
+    // Matches common top-level markers (1. / 1) / - / * / •) with little to no
+    // leading whitespace; deeper-indented sub-items are skipped so this stays
+    // a "5 points" summary, not the full nested outline.
+    function extractTopPoints(knowledgeOutlineText, maxCount) {
+        const lines = knowledgeOutlineText.split('\n');
+        const points = [];
+        for (const line of lines) {
+            const match = line.match(/^\s{0,3}(?:[0-9]+[.)]|[-*•])\s+(.+)/);
+            if (match) {
+                points.push(match[1].trim());
+                if (points.length >= maxCount) {
+                    break;
+                }
+            }
         }
-        learningBlueprintFetchInFlight.add(videoId);
-        button.disabled = true;
-        clearInlineError(button);
-        try {
-            const response = await fetch(
-                '/api/queue/' + encodeURIComponent(videoId) + '/learning-blueprint',
-                { method: 'POST' }
-            );
-            const data = await response.json();
-            if (!response.ok) {
-                const message = data.detail || '產生 Learning Blueprint 失敗';
-                showStatus(message, 'error');
-                showInlineError(button, message);
-                button.disabled = false;
-                return;
-            }
-            learningBlueprintCache.set(videoId, data.learning_blueprint);
-            await loadQueue();
-        } catch (error) {
-            showStatus('網路連線失敗', 'error');
-            showInlineError(button, '網路連線失敗');
-            button.disabled = false;
-        } finally {
-            learningBlueprintFetchInFlight.delete(videoId);
-        }
+        return points;
     }
 
-    // Revisiting an item whose Learning Blueprint was already generated in an
-    // earlier session — same reasoning as fetchKnowledgeOutlineIntoCache().
-    async function fetchLearningBlueprintIntoCache(videoId) {
-        if (learningBlueprintFetchInFlight.has(videoId)) {
-            return;
-        }
-        learningBlueprintFetchInFlight.add(videoId);
-        try {
-            const response = await fetch(
-                '/api/queue/' + encodeURIComponent(videoId) + '/learning-blueprint',
-                { method: 'POST' }
-            );
-            if (!response.ok) {
-                return;
-            }
-            const data = await response.json();
-            learningBlueprintCache.set(videoId, data.learning_blueprint);
-            await loadQueue();
-        } catch (error) {
-            // Silent — next poll tick (or manual refresh) retries naturally.
-        } finally {
-            learningBlueprintFetchInFlight.delete(videoId);
-        }
-    }
-
-    // Learning Blueprint Renderer (Sprint 7, Task 4): dispatches on
-    // structure_type to a shape-specific layout instead of dumping raw JSON
-    // (Task 3's MVP display). Pure presentation — consumes the same Knowledge
-    // JSON Task 3 already produces/caches, never calls Gemini, never mutates
-    // data. All AI-generated text goes through textContent (never innerHTML)
-    // since it's untrusted model output.
-    const KNOWLEDGE_STRUCTURE_RENDERERS = {
-        flow: renderFlowStructure,
-        cause_effect: renderCauseEffectStructure,
-        classification: renderClassificationStructure,
-        decision: renderDecisionStructure,
-        comparison: renderComparisonStructure,
-        timeline: renderTimelineStructure,
-        problem_solution: renderProblemSolutionStructure,
-        generic: renderGenericStructure,
-    };
-
-    function renderFlowStructure(content) {
-        const el = document.createElement('div');
-        el.className = 'kse-flow';
-        (content.steps || []).forEach(function(step, index) {
-            if (index > 0) {
-                const arrow = document.createElement('div');
-                arrow.className = 'kse-flow-arrow';
-                arrow.textContent = '↓';
-                el.appendChild(arrow);
-            }
-            const stepEl = document.createElement('div');
-            stepEl.className = 'kse-flow-step';
-
-            const num = document.createElement('div');
-            num.className = 'kse-flow-step-num';
-            num.textContent = step.step || (index + 1);
-            stepEl.appendChild(num);
-
-            const body = document.createElement('div');
-            body.className = 'kse-flow-step-body';
-            const action = document.createElement('div');
-            action.className = 'kse-flow-step-action';
-            action.textContent = step.action || '';
-            body.appendChild(action);
-            if (step.purpose) {
-                const purpose = document.createElement('div');
-                purpose.className = 'kse-flow-step-purpose';
-                purpose.textContent = step.purpose;
-                body.appendChild(purpose);
-            }
-            stepEl.appendChild(body);
-
-            el.appendChild(stepEl);
-        });
-        return el;
-    }
-
-    function renderCauseEffectStructure(content) {
-        const el = document.createElement('div');
-        el.className = 'kse-cause-effect';
-        (content.chain || []).forEach(function(link) {
-            const item = document.createElement('div');
-            item.className = 'kse-ce-item';
-
-            const row = document.createElement('div');
-            row.className = 'kse-ce-row';
-            const cause = document.createElement('span');
-            cause.className = 'kse-ce-cause';
-            cause.textContent = link.cause || '';
-            const arrow = document.createElement('span');
-            arrow.className = 'kse-ce-arrow';
-            arrow.textContent = '→';
-            const effect = document.createElement('span');
-            effect.className = 'kse-ce-effect';
-            effect.textContent = link.effect || '';
-            row.appendChild(cause);
-            row.appendChild(arrow);
-            row.appendChild(effect);
-            item.appendChild(row);
-
-            if (link.because) {
-                const because = document.createElement('div');
-                because.className = 'kse-ce-because';
-                because.textContent = link.because;
-                item.appendChild(because);
-            }
-            el.appendChild(item);
-        });
-        return el;
-    }
-
-    function renderClassificationStructure(content) {
-        const el = document.createElement('div');
-        el.className = 'kse-classification';
-        (content.categories || []).forEach(function(cat) {
-            const catEl = document.createElement('div');
-            catEl.className = 'kse-category';
-
-            const name = document.createElement('div');
-            name.className = 'kse-category-name';
-            name.textContent = cat.trait ? (cat.category + '（' + cat.trait + '）') : (cat.category || '');
-            catEl.appendChild(name);
-
-            const list = document.createElement('ul');
-            list.className = 'kse-category-items';
-            (cat.items || []).forEach(function(item) {
-                const li = document.createElement('li');
-                li.textContent = item;
-                list.appendChild(li);
-            });
-            catEl.appendChild(list);
-
-            el.appendChild(catEl);
-        });
-        return el;
-    }
-
-    function renderDecisionStructure(content) {
-        const el = document.createElement('div');
-        el.className = 'kse-decision';
-
-        if (content.condition) {
-            const condition = document.createElement('div');
-            condition.className = 'kse-decision-condition';
-            condition.textContent = '條件：' + content.condition;
-            el.appendChild(condition);
-        }
-
-        const list = document.createElement('ul');
-        list.className = 'kse-decision-options';
-        (content.options || []).forEach(function(option) {
-            const li = document.createElement('li');
-            const choice = document.createElement('span');
-            choice.className = 'kse-decision-choice';
-            choice.textContent = option.choice || '';
-            const arrow = document.createElement('span');
-            arrow.className = 'kse-decision-arrow';
-            arrow.textContent = ' → ';
-            const outcome = document.createElement('span');
-            outcome.className = 'kse-decision-outcome';
-            outcome.textContent = option.outcome || '';
-            li.appendChild(choice);
-            li.appendChild(arrow);
-            li.appendChild(outcome);
-            list.appendChild(li);
-        });
-        el.appendChild(list);
-        return el;
-    }
-
-    function renderComparisonStructure(content) {
-        const table = document.createElement('table');
-        table.className = 'kse-comparison';
-
-        const thead = document.createElement('thead');
-        const headRow = document.createElement('tr');
-        ['維度', content.option_a_label || 'A', content.option_b_label || 'B'].forEach(function(text) {
-            const th = document.createElement('th');
-            th.textContent = text;
-            headRow.appendChild(th);
-        });
-        thead.appendChild(headRow);
-        table.appendChild(thead);
-
-        const tbody = document.createElement('tbody');
-        (content.dimensions || []).forEach(function(dim) {
-            const row = document.createElement('tr');
-            [dim.dimension, dim.option_a, dim.option_b].forEach(function(text) {
-                const td = document.createElement('td');
-                td.textContent = text || '';
-                row.appendChild(td);
-            });
-            tbody.appendChild(row);
-        });
-        table.appendChild(tbody);
-
-        return table;
-    }
-
-    function renderTimelineStructure(content) {
-        const el = document.createElement('div');
-        el.className = 'kse-timeline';
-        (content.events || []).forEach(function(event) {
-            const item = document.createElement('div');
-            item.className = 'kse-timeline-event';
-
-            const time = document.createElement('div');
-            time.className = 'kse-timeline-time';
-            time.textContent = event.time || '';
-            item.appendChild(time);
-
-            const body = document.createElement('div');
-            body.className = 'kse-timeline-body';
-            const eventText = document.createElement('div');
-            eventText.className = 'kse-timeline-event-text';
-            eventText.textContent = event.event || '';
-            body.appendChild(eventText);
-            if (event.significance) {
-                const significance = document.createElement('div');
-                significance.className = 'kse-timeline-significance';
-                significance.textContent = event.significance;
-                body.appendChild(significance);
-            }
-            item.appendChild(body);
-
-            el.appendChild(item);
-        });
-        return el;
-    }
-
-    function renderProblemSolutionStructure(content) {
-        const el = document.createElement('div');
-        el.className = 'kse-problem-solution';
-        const ROWS = [
-            ['problem', '問題'],
-            ['root_cause', '原因'],
-            ['solution', '解法'],
-            ['result', '結果'],
-        ];
-        (content.cases || []).forEach(function(caseItem) {
-            const caseEl = document.createElement('div');
-            caseEl.className = 'kse-ps-case';
-            ROWS.forEach(function(pair) {
-                const key = pair[0];
-                const label = pair[1];
-                if (!caseItem[key]) return;
-                const row = document.createElement('div');
-                row.className = 'kse-ps-row';
-                const labelEl = document.createElement('span');
-                labelEl.className = 'kse-ps-label';
-                labelEl.textContent = label;
-                const valueEl = document.createElement('span');
-                valueEl.className = 'kse-ps-value';
-                valueEl.textContent = caseItem[key];
-                row.appendChild(labelEl);
-                row.appendChild(valueEl);
-                caseEl.appendChild(row);
-            });
-            el.appendChild(caseEl);
-        });
-        return el;
-    }
-
-    // Fallback for structure_type = "generic", and defensively for any
-    // unrecognized/future structure_type — never a hard crash on unexpected data.
-    function renderGenericStructure(content) {
-        const list = document.createElement('ul');
-        list.className = 'kse-generic';
-        (content.points || []).forEach(function(point) {
-            const li = document.createElement('li');
-            li.textContent = point;
-            list.appendChild(li);
-        });
-        return list;
-    }
-
-    // Knowledge Structure Engine Renderer (Sprint 7, Task 4): `data` is the
-    // structured Knowledge JSON object (structure_type/structure_label/
-    // content) Task 3 produces/caches. Dispatches on structure_type to the
-    // matching renderer above; unrecognized structure_type falls back to the
-    // generic bullet renderer (reads content.points if present, otherwise
-    // renders nothing rather than crashing).
-    // Task 2 (Sprint 8): shared collapsible header for the module sections
-    // below — independent per module (no accordion, no mutual exclusion).
-    // Defaults to collapsed (Feature 002 seeds collapsedSet in renderQueue());
-    // toggling is a pure class flip, same as the existing Rapid Learning
-    // "展開完整內容" toggle — never re-fetches or regenerates.
+    // Task 2 (Sprint 8): shared collapsible header for a module section —
+    // independent per module (no accordion, no mutual exclusion). Restored
+    // (Feature 003 Revised Scope hotfix): this is a shared utility, not
+    // specific to Learning Blueprint/Teach Back/Action List/Review — it was
+    // accidentally removed along with those 4 modules' code even though
+    // buildRapidLearningSection() below still depends on it. Defaults to
+    // collapsed (collapsedDefaultsSeeded seeds collapsedSet in renderQueue());
+    // toggling is a pure class flip, never re-fetches or regenerates.
     function buildModuleToggleHeader(icon, label, videoId, collapsedSet, bodyEl) {
         const isCollapsed = collapsedSet.has(videoId);
         bodyEl.classList.toggle('is-hidden', isCollapsed);
@@ -1345,542 +995,14 @@ document.addEventListener('DOMContentLoaded', function() {
         return header;
     }
 
-    function buildLearningBlueprintSection(videoId, data) {
-        const section = document.createElement('div');
-        section.className = 'rapid-learning-section';
-
-        const block = document.createElement('div');
-        block.className = 'rapid-learning-block';
-        block.innerHTML = '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>';
-
-        const body = document.createElement('div');
-        body.className = 'rapid-learning-module-body';
-        body.innerHTML = '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>';
-
-        const renderer = KNOWLEDGE_STRUCTURE_RENDERERS[data.structure_type] || renderGenericStructure;
-        const contentEl = renderer(data.content || {});
-        contentEl.classList.add('rapid-learning-content');
-        body.appendChild(contentEl);
-
-        const label = data.structure_label || data.structure_type || 'Learning Blueprint';
-        block.appendChild(buildModuleToggleHeader('🗺️', 'Learning Blueprint（' + label + '）', videoId, collapsedLearningBlueprintCards, body));
-        block.appendChild(body);
-
-        section.appendChild(block);
-        return section;
-    }
-
-    // Teach Back (Sprint 7, Task 5): manual, opt-in trigger — mirrors
-    // startLearningBlueprint()'s shape but hits the /teach-back endpoint,
-    // which requires a Learning Blueprint to already exist server-side.
-    async function startTeachBack(videoId, button) {
-        if (teachBackFetchInFlight.has(videoId)) {
-            return;
-        }
-        teachBackFetchInFlight.add(videoId);
-        button.disabled = true;
-        clearInlineError(button);
-        try {
-            const response = await fetch(
-                '/api/queue/' + encodeURIComponent(videoId) + '/teach-back',
-                { method: 'POST' }
-            );
-            const data = await response.json();
-            if (!response.ok) {
-                const message = data.detail || '產生 Teach Back 失敗';
-                showStatus(message, 'error');
-                showInlineError(button, message);
-                button.disabled = false;
-                return;
-            }
-            teachBackCache.set(videoId, data.teach_back);
-            await loadQueue();
-        } catch (error) {
-            showStatus('網路連線失敗', 'error');
-            showInlineError(button, '網路連線失敗');
-            button.disabled = false;
-        } finally {
-            teachBackFetchInFlight.delete(videoId);
-        }
-    }
-
-    // Revisiting an item whose Teach Back was already generated in an earlier
-    // session — same reasoning as fetchLearningBlueprintIntoCache().
-    async function fetchTeachBackIntoCache(videoId) {
-        if (teachBackFetchInFlight.has(videoId)) {
-            return;
-        }
-        teachBackFetchInFlight.add(videoId);
-        try {
-            const response = await fetch(
-                '/api/queue/' + encodeURIComponent(videoId) + '/teach-back',
-                { method: 'POST' }
-            );
-            if (!response.ok) {
-                return;
-            }
-            const data = await response.json();
-            teachBackCache.set(videoId, data.teach_back);
-            await loadQueue();
-        } catch (error) {
-            // Silent — next poll tick (or manual refresh) retries naturally.
-        } finally {
-            teachBackFetchInFlight.delete(videoId);
-        }
-    }
-
-    // Fixed reflection prompts — mirrors app/teach_back.py's
-    // _REFLECTION_QUESTIONS exactly (not Gemini-generated, same for every
-    // Blueprint item; see that module for why).
-    const TEACH_BACK_REFLECTION_QUESTIONS = [
-        '今天最大的收穫？',
-        '哪裡還不理解？',
-        '下一步準備做什麼？',
-        '什麼時候會再次使用？',
-    ];
-
-    // Renders one Blueprint's Teach Back block as real semantic HTML (real
-    // checkbox <input>s, real headings) — not <pre> text — per Task 5's
-    // "match Study Note's reading experience" requirement.
-    function buildTeachBackItem(index, item) {
-        const block = document.createElement('div');
-        block.className = 'teach-back-item';
-
-        const heading = document.createElement('h4');
-        heading.className = 'teach-back-item-heading';
-        heading.textContent = 'Blueprint ' + (index + 1) + '：' + (item.title || '');
-        block.appendChild(heading);
-
-        const promptHeading = document.createElement('div');
-        promptHeading.className = 'teach-back-subheading';
-        promptHeading.textContent = 'Explain in Your Own Words';
-        block.appendChild(promptHeading);
-
-        const promptText = document.createElement('p');
-        promptText.className = 'teach-back-prompt';
-        promptText.textContent = item.teaching_prompt || '';
-        block.appendChild(promptText);
-
-        const checklistHeading = document.createElement('div');
-        checklistHeading.className = 'teach-back-subheading';
-        checklistHeading.textContent = 'Self Check Checklist';
-        block.appendChild(checklistHeading);
-
-        const checklist = document.createElement('ul');
-        checklist.className = 'teach-back-checklist';
-        (item.checklist || []).forEach(function(check) {
-            const li = document.createElement('li');
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.disabled = true;
-            const label = document.createElement('span');
-            label.textContent = check;
-            li.appendChild(checkbox);
-            li.appendChild(label);
-            checklist.appendChild(li);
-        });
-        block.appendChild(checklist);
-
-        const questionsHeading = document.createElement('div');
-        questionsHeading.className = 'teach-back-subheading';
-        questionsHeading.textContent = 'Practice Questions';
-        block.appendChild(questionsHeading);
-
-        const questions = document.createElement('dl');
-        questions.className = 'teach-back-questions';
-        const q = item.practice_questions || {};
-        [['Concept', q.concept], ['Scenario', q.scenario], ['Application', q.application]].forEach(function(pair) {
-            const dt = document.createElement('dt');
-            dt.textContent = pair[0];
-            const dd = document.createElement('dd');
-            dd.textContent = pair[1] || '';
-            questions.appendChild(dt);
-            questions.appendChild(dd);
-        });
-        block.appendChild(questions);
-
-        const reflectionHeading = document.createElement('div');
-        reflectionHeading.className = 'teach-back-subheading';
-        reflectionHeading.textContent = 'Reflection';
-        block.appendChild(reflectionHeading);
-
-        const reflectionList = document.createElement('ul');
-        reflectionList.className = 'teach-back-reflection';
-        TEACH_BACK_REFLECTION_QUESTIONS.forEach(function(question) {
-            const li = document.createElement('li');
-            li.textContent = question;
-            reflectionList.appendChild(li);
-        });
-        block.appendChild(reflectionList);
-
-        return block;
-    }
-
-    // Preview + Download, per Task 5's confirmed UI flow: Learning Blueprint
-    // → Generate Teach Back → Preview → Download Markdown.
-    function buildTeachBackSection(videoId, data) {
-        const section = document.createElement('div');
-        section.className = 'rapid-learning-section';
-
-        const block = document.createElement('div');
-        block.className = 'rapid-learning-block';
-        block.innerHTML = '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>';
-
-        const body = document.createElement('div');
-        body.className = 'rapid-learning-module-body';
-        body.innerHTML = '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>';
-
-        (data.items || []).forEach(function(item, index) {
-            body.appendChild(buildTeachBackItem(index, item));
-        });
-
-        block.appendChild(buildModuleToggleHeader('📝', 'Teach Back', videoId, collapsedTeachBackCards, body));
-        block.appendChild(body);
-
-        // Outside the collapsible body — download stays reachable without expanding.
-        const downloadBtn = document.createElement('a');
-        downloadBtn.className = 'queue-item-export teach-back-download';
-        downloadBtn.href = '/api/queue/' + encodeURIComponent(videoId) + '/teach-back/download';
-        downloadBtn.innerHTML = '<span aria-hidden="true">⬇</span> 下載 Teach Back';
-        block.appendChild(downloadBtn);
-
-        section.appendChild(block);
-        return section;
-    }
-
-    // Action List (Sprint 7, Task 6): manual, opt-in trigger — mirrors
-    // startTeachBack()'s shape but hits the /action-list endpoint, which
-    // requires a Learning Blueprint to already exist server-side.
-    async function startActionList(videoId, button) {
-        if (actionListFetchInFlight.has(videoId)) {
-            return;
-        }
-        actionListFetchInFlight.add(videoId);
-        button.disabled = true;
-        clearInlineError(button);
-        try {
-            const response = await fetch(
-                '/api/queue/' + encodeURIComponent(videoId) + '/action-list',
-                { method: 'POST' }
-            );
-            const data = await response.json();
-            if (!response.ok) {
-                const message = data.detail || '產生 Action List 失敗';
-                showStatus(message, 'error');
-                showInlineError(button, message);
-                button.disabled = false;
-                return;
-            }
-            actionListCache.set(videoId, data.action_list);
-            await loadQueue();
-        } catch (error) {
-            showStatus('網路連線失敗', 'error');
-            showInlineError(button, '網路連線失敗');
-            button.disabled = false;
-        } finally {
-            actionListFetchInFlight.delete(videoId);
-        }
-    }
-
-    // Revisiting an item whose Action List was already generated in an
-    // earlier session — same reasoning as fetchTeachBackIntoCache().
-    async function fetchActionListIntoCache(videoId) {
-        if (actionListFetchInFlight.has(videoId)) {
-            return;
-        }
-        actionListFetchInFlight.add(videoId);
-        try {
-            const response = await fetch(
-                '/api/queue/' + encodeURIComponent(videoId) + '/action-list',
-                { method: 'POST' }
-            );
-            if (!response.ok) {
-                return;
-            }
-            const data = await response.json();
-            actionListCache.set(videoId, data.action_list);
-            await loadQueue();
-        } catch (error) {
-            // Silent — next poll tick (or manual refresh) retries naturally.
-        } finally {
-            actionListFetchInFlight.delete(videoId);
-        }
-    }
-
-    // Preview + Download, same shape as buildTeachBackSection() — real
-    // semantic HTML (checkbox list), not <pre> text. Action List is a single
-    // flat 3-5 item list (not per-Blueprint-item like Teach Back).
-    function buildActionListSection(videoId, data) {
-        const section = document.createElement('div');
-        section.className = 'rapid-learning-section';
-
-        const block = document.createElement('div');
-        block.className = 'rapid-learning-block';
-        block.innerHTML = '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>';
-
-        const body = document.createElement('div');
-        body.className = 'rapid-learning-module-body';
-        body.innerHTML = '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>';
-
-        const list = document.createElement('ul');
-        list.className = 'teach-back-checklist action-list-items';
-        (data.actions || []).forEach(function(action) {
-            const li = document.createElement('li');
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.disabled = true;
-            const label = document.createElement('span');
-            label.textContent = action;
-            li.appendChild(checkbox);
-            li.appendChild(label);
-            list.appendChild(li);
-        });
-        body.appendChild(list);
-
-        block.appendChild(buildModuleToggleHeader('✅', 'Action List', videoId, collapsedActionListCards, body));
-        block.appendChild(body);
-
-        const downloadBtn = document.createElement('a');
-        downloadBtn.className = 'queue-item-export teach-back-download';
-        downloadBtn.href = '/api/queue/' + encodeURIComponent(videoId) + '/action-list/download';
-        downloadBtn.innerHTML = '<span aria-hidden="true">⬇</span> 下載 Action List';
-        block.appendChild(downloadBtn);
-
-        section.appendChild(block);
-        return section;
-    }
-
-    // Review (Sprint 7, Task 7): manual, opt-in trigger — mirrors
-    // startActionList()'s shape but hits the /review endpoint, which
-    // requires a Learning Blueprint to already exist server-side.
-    async function startReview(videoId, button) {
-        if (reviewFetchInFlight.has(videoId)) {
-            return;
-        }
-        reviewFetchInFlight.add(videoId);
-        button.disabled = true;
-        clearInlineError(button);
-        try {
-            const response = await fetch(
-                '/api/queue/' + encodeURIComponent(videoId) + '/review',
-                { method: 'POST' }
-            );
-            const data = await response.json();
-            if (!response.ok) {
-                const message = data.detail || '產生 Review 失敗';
-                showStatus(message, 'error');
-                showInlineError(button, message);
-                button.disabled = false;
-                return;
-            }
-            reviewCache.set(videoId, data.review);
-            await loadQueue();
-        } catch (error) {
-            showStatus('網路連線失敗', 'error');
-            showInlineError(button, '網路連線失敗');
-            button.disabled = false;
-        } finally {
-            reviewFetchInFlight.delete(videoId);
-        }
-    }
-
-    // Revisiting an item whose Review was already generated in an earlier
-    // session — same reasoning as fetchActionListIntoCache().
-    async function fetchReviewIntoCache(videoId) {
-        if (reviewFetchInFlight.has(videoId)) {
-            return;
-        }
-        reviewFetchInFlight.add(videoId);
-        try {
-            const response = await fetch(
-                '/api/queue/' + encodeURIComponent(videoId) + '/review',
-                { method: 'POST' }
-            );
-            if (!response.ok) {
-                return;
-            }
-            const data = await response.json();
-            reviewCache.set(videoId, data.review);
-            await loadQueue();
-        } catch (error) {
-            // Silent — next poll tick (or manual refresh) retries naturally.
-        } finally {
-            reviewFetchInFlight.delete(videoId);
-        }
-    }
-
-    // Fixed reflection prompts + Self Score options — mirrors
-    // app/review.py's _REFLECTION_QUESTIONS / _SELF_SCORE_OPTIONS exactly
-    // (not Gemini-generated, not persisted; Self Score is a pure self-
-    // assessment affordance per Task 7's confirmed design).
-    const REVIEW_REFLECTION_QUESTIONS = [
-        '這次測驗中，哪些地方答得出來？',
-        '哪些地方完全想不起來？',
-        '需要回頭重看哪一段？',
-        '這次複習後，記憶有變得更清楚嗎？',
-    ];
-    const REVIEW_SELF_SCORE_OPTIONS = ['0%', '25%', '50%', '75%', '100%'];
-
-    // One recall question: prompt always visible, reference answer hidden
-    // behind a toggle by default (Task 7's confirmed design — think first,
-    // then reveal). revealedReviewAnswers persists the toggle state across
-    // renderQueue() rebuilds, keyed by videoId+section+index so each question
-    // in each section of each card is independent.
-    function buildRecallItem(videoId, sectionKey, index, promptText, referenceAnswer) {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'review-item';
-
-        const promptEl = document.createElement('p');
-        promptEl.className = 'review-prompt';
-        promptEl.textContent = promptText || '';
-        wrapper.appendChild(promptEl);
-
-        const revealKey = videoId + '::' + sectionKey + '::' + index;
-        const isRevealed = revealedReviewAnswers.has(revealKey);
-
-        const toggleBtn = document.createElement('button');
-        toggleBtn.className = 'review-toggle';
-        toggleBtn.type = 'button';
-        toggleBtn.textContent = isRevealed ? '▲ 收合' : '▶ Show Reference Answer';
-        wrapper.appendChild(toggleBtn);
-
-        const answerEl = document.createElement('p');
-        answerEl.className = 'review-answer' + (isRevealed ? '' : ' is-hidden');
-        answerEl.textContent = referenceAnswer || '';
-        wrapper.appendChild(answerEl);
-
-        // Pure UI toggle — no fetch, no re-render, just a class flip, same
-        // pattern as the Task 2 Knowledge Outline expand/collapse toggle.
-        toggleBtn.addEventListener('click', function() {
-            const nowRevealed = answerEl.classList.toggle('is-hidden') === false;
-            toggleBtn.textContent = nowRevealed ? '▲ 收合' : '▶ Show Reference Answer';
-            if (nowRevealed) {
-                revealedReviewAnswers.add(revealKey);
-            } else {
-                revealedReviewAnswers.delete(revealKey);
-            }
-        });
-
-        return wrapper;
-    }
-
-    function buildReviewSubheading(text) {
-        const heading = document.createElement('div');
-        heading.className = 'teach-back-subheading';
-        heading.textContent = text;
-        return heading;
-    }
-
-    // Preview + Download. Blank Filling section only renders if Gemini
-    // judged the content suitable (data.blank_filling may be empty/absent —
-    // Task 7's confirmed design: not forced).
-    function buildReviewSection(videoId, data) {
-        const section = document.createElement('div');
-        section.className = 'rapid-learning-section';
-
-        const block = document.createElement('div');
-        block.className = 'rapid-learning-block';
-        block.innerHTML = '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>';
-
-        const body = document.createElement('div');
-        body.className = 'rapid-learning-module-body';
-        body.innerHTML = '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>';
-
-        const oneSentence = data.one_sentence_recall;
-        if (oneSentence) {
-            body.appendChild(buildReviewSubheading('One Sentence Recall'));
-            body.appendChild(buildRecallItem(videoId, 'one_sentence', 0, oneSentence.prompt, oneSentence.reference_answer));
-        }
-
-        const recallQuestions = data.recall_questions || [];
-        if (recallQuestions.length) {
-            body.appendChild(buildReviewSubheading('Recall Questions'));
-            recallQuestions.forEach(function(q, index) {
-                body.appendChild(buildRecallItem(videoId, 'recall_question', index, q.prompt, q.reference_answer));
-            });
-        }
-
-        const workflowRecall = data.workflow_recall;
-        if (workflowRecall) {
-            body.appendChild(buildReviewSubheading('Workflow Recall'));
-            body.appendChild(buildRecallItem(videoId, 'workflow', 0, workflowRecall.prompt, workflowRecall.reference_answer));
-        }
-
-        const blankFilling = data.blank_filling || [];
-        if (blankFilling.length) {
-            body.appendChild(buildReviewSubheading('Blank Filling'));
-            blankFilling.forEach(function(item, index) {
-                body.appendChild(buildRecallItem(videoId, 'blank_filling', index, item.prompt, item.answer));
-            });
-        }
-
-        body.appendChild(buildReviewSubheading('Reflection'));
-        const reflectionList = document.createElement('ul');
-        reflectionList.className = 'teach-back-reflection';
-        REVIEW_REFLECTION_QUESTIONS.forEach(function(question) {
-            const li = document.createElement('li');
-            li.textContent = question;
-            reflectionList.appendChild(li);
-        });
-        body.appendChild(reflectionList);
-
-        const selfScoreLabel = document.createElement('div');
-        selfScoreLabel.className = 'teach-back-subheading';
-        selfScoreLabel.textContent = 'Self Score';
-        body.appendChild(selfScoreLabel);
-
-        const selfScoreOptions = document.createElement('div');
-        selfScoreOptions.className = 'review-self-score-options';
-        REVIEW_SELF_SCORE_OPTIONS.forEach(function(option) {
-            const span = document.createElement('span');
-            span.className = 'review-self-score-option';
-            span.textContent = option;
-            selfScoreOptions.appendChild(span);
-        });
-        body.appendChild(selfScoreOptions);
-
-        block.appendChild(buildModuleToggleHeader('🔄', 'Review（Active Recall）', videoId, collapsedReviewCards, body));
-        block.appendChild(body);
-
-        const downloadBtn = document.createElement('a');
-        downloadBtn.className = 'queue-item-export teach-back-download';
-        downloadBtn.href = '/api/queue/' + encodeURIComponent(videoId) + '/review/download';
-        downloadBtn.innerHTML = '<span aria-hidden="true">⬇</span> 下載 Review';
-        block.appendChild(downloadBtn);
-
-        section.appendChild(block);
-        return section;
-    }
-
-    // Quick Learn Layer (Sprint 7, Task 2): pulls up to `maxCount` top-level
-    // list items out of the existing Knowledge Outline text — a pure UI-layer
-    // condensation of content Task 1 already generated, not a new Gemini call.
-    // Matches common top-level markers (1. / 1) / - / * / •) with little to no
-    // leading whitespace; deeper-indented sub-items are skipped so this stays
-    // a "5 points" summary, not the full nested outline.
-    function extractTopPoints(knowledgeOutlineText, maxCount) {
-        const lines = knowledgeOutlineText.split('\n');
-        const points = [];
-        for (const line of lines) {
-            const match = line.match(/^\s{0,3}(?:[0-9]+[.)]|[-*•])\s+(.+)/);
-            if (match) {
-                points.push(match[1].trim());
-                if (points.length >= maxCount) {
-                    break;
-                }
-            }
-        }
-        return points;
-    }
-
-    // Renders the Quick Learn Layer directly on a Queue Card: One Sentence +
-    // condensed points are always visible (fits in one screen — the product
-    // goal is "30 seconds to a knowledge outline" before deciding to read
-    // more); the full Knowledge Outline is collapsed by default behind a
-    // toggle that only flips a CSS class, no Gemini call, no re-fetch.
+    // Renders "30秒快速學習" directly on a Queue Card (Feature 003 Revised
+    // Scope): One Sentence + up to 5 key points + Suitable For are all shown
+    // at once, nothing hidden behind a secondary toggle — the whole point is
+    // to stay readable in about 30 seconds, not to hide a fuller outline
+    // behind it (that was the pre-Feature-003 Knowledge Outline design).
     function buildRapidLearningSection(videoId, rawText) {
         const parsed = parseKnowledgeOutline(rawText);
-        const points = extractTopPoints(parsed.knowledgeOutline, 5);
+        const points = extractTopPoints(parsed.keyPoints, 5);
 
         const section = document.createElement('div');
         section.className = 'rapid-learning-section';
@@ -1926,41 +1048,23 @@ document.addEventListener('DOMContentLoaded', function() {
 
         body.appendChild(quickBlock);
 
-        const isExpanded = expandedKnowledgeOutlineCards.has(videoId);
-
-        const toggleBtn = document.createElement('button');
-        toggleBtn.className = 'rapid-learning-toggle';
-        toggleBtn.type = 'button';
-        toggleBtn.textContent = isExpanded ? '▲ 收合' : '▶ 展開完整內容';
-        body.appendChild(toggleBtn);
-
-        const outlineBlock = document.createElement('div');
-        outlineBlock.className = 'rapid-learning-block rapid-learning-full' + (isExpanded ? '' : ' is-hidden');
-        outlineBlock.innerHTML =
+        // Suitable For (Feature 003 Revised Scope): describes what need or
+        // learning goal this video fits, not an absolute "worth watching"
+        // verdict — always visible, no toggle, keeps the whole module
+        // readable in about 30 seconds.
+        const suitableBlock = document.createElement('div');
+        suitableBlock.className = 'rapid-learning-block';
+        suitableBlock.innerHTML =
             '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>' +
-            '<div class="rapid-learning-heading">🗺️ Knowledge Outline</div>' +
+            '<div class="rapid-learning-heading">🎓 適合繼續深入</div>' +
             '<div class="rapid-learning-divider">━━━━━━━━━━━━━━━━━━</div>';
-        const outlineText = document.createElement('pre');
-        outlineText.className = 'rapid-learning-content';
-        outlineText.textContent = parsed.knowledgeOutline;
-        outlineBlock.appendChild(outlineText);
-        body.appendChild(outlineBlock);
+        const suitableText = document.createElement('p');
+        suitableText.className = 'rapid-learning-content';
+        suitableText.textContent = parsed.suitableFor;
+        suitableBlock.appendChild(suitableText);
+        body.appendChild(suitableBlock);
 
-        // Pure UI toggle — no fetch, no re-render, just a class flip — so
-        // expand/collapse never re-calls Gemini. State is also mirrored into
-        // expandedKnowledgeOutlineCards so it survives a full renderQueue()
-        // rebuild triggered by an unrelated action (e.g. deleting another item).
-        toggleBtn.addEventListener('click', function() {
-            const nowExpanded = outlineBlock.classList.toggle('is-hidden') === false;
-            toggleBtn.textContent = nowExpanded ? '▲ 收合' : '▶ 展開完整內容';
-            if (nowExpanded) {
-                expandedKnowledgeOutlineCards.add(videoId);
-            } else {
-                expandedKnowledgeOutlineCards.delete(videoId);
-            }
-        });
-
-        block.appendChild(buildModuleToggleHeader('🧠', 'Rapid Learning', videoId, collapsedRapidLearningCards, body));
+        block.appendChild(buildModuleToggleHeader('🧠', '30秒快速學習', videoId, collapsedRapidLearningCards, body));
         block.appendChild(body);
         section.appendChild(block);
 

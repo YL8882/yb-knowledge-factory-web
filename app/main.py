@@ -14,17 +14,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
-import action_list
 import error_messages
 import gemini_client
 import history_store
 import knowledge_outline
 import knowledge_package
-import learning_blueprint
 import queue_store
-import review
 import study_note
-import teach_back
 import transcript as transcript_service
 import youtube
 from observability import cache_metrics, error_metrics, runtime_metrics
@@ -248,21 +244,12 @@ def _do_generate_transcript_for_item(video_id: str) -> dict:
         if cached_transcript_path:
             text = cached_transcript_path.read_text(encoding="utf-8")
 
-            # The Transcript file is the single source of truth for the summary —
-            # reuse it from there first (works even for a brand-new queue item that
-            # never held it in memory), then the in-memory value, and only call
-            # Gemini as a last resort for a pre-cache-feature file that has neither.
+            # The Transcript file is the single source of truth for a legacy
+            # (pre-Feature-003) embedded summary — reuse it if present, then the
+            # in-memory value. Feature 003: no Gemini fallback here anymore: a
+            # video with neither shows no teaser until the user generates Study
+            # Note, whose own Summary section becomes the teaser (see below).
             summary = transcript_service.extract_summary(text) or item.get("summary") or ""
-            if not summary:
-                try:
-                    summary = gemini_client.generate_quick_summary(
-                        title=item["title"],
-                        url=item["url"],
-                        transcript_text=study_note.extract_transcript_body(text),
-                        request_id=item.get("request_id"), video_id=video_id,
-                    )
-                except (gemini_client.GeminiConfigError, gemini_client.GeminiGenerationError):
-                    summary = ""
 
             fields = {
                 "status": "Transcript Ready",
@@ -280,6 +267,16 @@ def _do_generate_transcript_for_item(video_id: str) -> dict:
             if cached_study_note_path:
                 fields["status"] = "Study Note Ready"
                 fields["study_note_path"] = str(cached_study_note_path)
+
+                # Feature 003: Study Note's own Summary section is the teaser
+                # once Study Note exists, taking priority over any legacy
+                # Transcript-embedded summary.
+                study_note_summary = study_note.extract_summary(
+                    cached_study_note_path.read_text(encoding="utf-8")
+                )
+                if study_note_summary:
+                    fields["summary"] = study_note_summary
+                    summary = study_note_summary
 
                 # Cache Intelligence (Sprint 8.5A Task 3): a hit here means
                 # _do_generate_study_note()'s own cache check below is never
@@ -322,13 +319,10 @@ def _do_generate_transcript_for_item(video_id: str) -> dict:
         subtitle_fetch_error_text = str(exc)
 
     if subtitle_text:
-        try:
-            summary = gemini_client.generate_quick_summary(
-                title=item["title"], url=item["url"], transcript_text=subtitle_text,
-                request_id=item.get("request_id"), video_id=video_id,
-            )
-        except (gemini_client.GeminiConfigError, gemini_client.GeminiGenerationError):
-            summary = ""
+        # Feature 003: Transcript no longer calls Gemini for a summary —
+        # the Queue Card teaser is populated later from Study Note's own
+        # Summary section, once the user generates it.
+        summary = ""
 
         output_path = transcript_service.save_transcript(
             video_id=video_id, title=item["title"], url=item["url"],
@@ -428,19 +422,10 @@ def _do_generate_transcript_for_item(video_id: str) -> dict:
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    # Best-effort one-sentence summary so the queue item shows a quick "what is this
-    # video about" preview without the user having to generate the full Study Note.
-    # A failure here (e.g. missing Gemini key) must not fail the Transcript step itself.
-    # Generated before save_transcript() so it can be stored inside the Transcript
-    # file itself (single source of truth) — a future cache hit reads it straight
-    # back out instead of calling Gemini again.
-    try:
-        summary = gemini_client.generate_quick_summary(
-            title=item["title"], url=item["url"], transcript_text=text,
-            request_id=item.get("request_id"), video_id=video_id,
-        )
-    except (gemini_client.GeminiConfigError, gemini_client.GeminiGenerationError):
-        summary = ""
+    # Feature 003: Transcript no longer calls Gemini for a summary — the
+    # Queue Card teaser is populated later from Study Note's own Summary
+    # section, once the user generates it.
+    summary = ""
 
     output_path = transcript_service.save_transcript(
         video_id=video_id, title=item["title"], url=item["url"], transcript_text=text, summary=summary
@@ -566,17 +551,19 @@ def _do_generate_study_note(video_id: str) -> dict:
         )
 
         if cached_study_note_path:
+            cached_body = cached_study_note_path.read_text(encoding="utf-8")
             queue_store.update_item(
                 video_id,
                 status="Study Note Ready",
                 study_note_path=str(cached_study_note_path),
+                summary=study_note.extract_summary(cached_body),
                 last_error="",
                 last_error_stage="",
             )
             return {
                 "video_id": video_id,
                 "status": "Study Note Ready",
-                "study_note": cached_study_note_path.read_text(encoding="utf-8"),
+                "study_note": cached_body,
                 "file_path": str(cached_study_note_path),
             }
 
@@ -611,7 +598,10 @@ def _do_generate_study_note(video_id: str) -> dict:
     )
 
     queue_store.update_item(
-        video_id, status="Study Note Ready", study_note_path=str(output_path)
+        video_id,
+        status="Study Note Ready",
+        study_note_path=str(output_path),
+        summary=study_note.extract_summary(body),
     )
 
     return {
@@ -625,21 +615,19 @@ def _do_generate_study_note(video_id: str) -> dict:
 def _auto_generate_transcript(video_id: str) -> None:
     """Background-task entry point used right after a video is added to the queue,
     and also by /retry for an item that failed before Transcript ever succeeded.
-    Fully automatic pipeline (Sprint 4): Transcript, then (on success) straight
-    into Study Note, with no manual click in between. Swallows failures instead
-    of raising an HTTP error — there is no request left to respond to. A failure
-    leaves the item at its last real status with last_error/last_error_stage
-    set, so the UI can report exactly what failed and offer a Retry action.
+    Transcript-only (Feature 003): Study Note is no longer auto-chained after
+    Transcript succeeds — Study Note is now a separate, user-triggered step
+    (POST /study-note, same Freemium cost-control pattern as Rapid Learning /
+    Learning Blueprint), part of keeping Transcript itself Gemini-free.
+    Swallows failure instead of raising an HTTP error — there is no request
+    left to respond to. A failure leaves the item at its last real status
+    with last_error/last_error_stage set, so the UI can report exactly what
+    failed and offer a Retry action.
     """
     try:
         _generate_transcript_for_item(video_id)
     except TranscriptGenerationError:
         return
-
-    try:
-        _generate_study_note_for_item(video_id)
-    except StudyNoteGenerationError:
-        pass
 
 
 def _retry_study_note_only(video_id: str) -> None:
@@ -953,293 +941,6 @@ async def generate_knowledge_outline(video_id: str):
         "knowledge_outline": body,
         "file_path": str(output_path),
     }
-
-
-@app.post("/api/queue/{video_id}/learning-blueprint")
-async def generate_learning_blueprint(video_id: str):
-    """Knowledge Structure Engine (Sprint 7, Task 3): manual trigger for the
-    Comprehension-phase artifact. Two-step Gemini call (Structure Detection +
-    Knowledge Extraction, see Knowledge_Structure_Engine_v1.0.md) returns a
-    structured Knowledge JSON object — not free-form text — so the future
-    Renderer (Task 4) can dispatch on `structure_type` instead of parsing
-    prose. Independent of the existing One Sentence + Knowledge Outline flow
-    (Task 1): reads the cached Transcript directly, same as knowledge_outline
-    does, and follows the same direct-async-handler pattern (not routed
-    through _pipeline_queue / the single worker thread — no `status` change,
-    no Stage Guard involvement).
-    """
-    try:
-        item = queue_store.get_item(video_id)
-    except queue_store.QueueItemNotFoundError:
-        raise HTTPException(status_code=404, detail="項目不存在")
-
-    cached_path = learning_blueprint.find_cached_learning_blueprint(video_id)
-    cache_metrics.log_cache_event(
-        request_id=item.get("request_id"), video_id=video_id,
-        artifact_type="learning_blueprint", hit=cached_path is not None,
-    )
-    if cached_path:
-        return {
-            "video_id": video_id,
-            "learning_blueprint": learning_blueprint.load_learning_blueprint(cached_path),
-            "file_path": str(cached_path),
-        }
-
-    transcript_path = item.get("transcript_path")
-    if not transcript_path or not Path(transcript_path).exists():
-        raise HTTPException(status_code=400, detail="請先產生 Transcript")
-
-    transcript_content = Path(transcript_path).read_text(encoding="utf-8")
-    transcript_body = study_note.extract_transcript_body(transcript_content)
-
-    try:
-        data = await asyncio.to_thread(
-            gemini_client.generate_learning_blueprint,
-            title=item["title"], url=item["url"], transcript_text=transcript_body,
-            request_id=item.get("request_id"), video_id=video_id,
-        )
-    except gemini_client.GeminiConfigError as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
-    except gemini_client.GeminiGenerationError as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=error_messages.classify_error(str(exc), stage="learning_blueprint"),
-        )
-
-    output_path = learning_blueprint.save_learning_blueprint(
-        video_id=video_id, title=item["title"], data=data
-    )
-
-    # Additive field only — no `status` change, so this never interacts with
-    # _stage_rank() / Stage Guard's forward-only state machine.
-    queue_store.update_item(video_id, learning_blueprint_path=str(output_path))
-
-    return {
-        "video_id": video_id,
-        "learning_blueprint": data,
-        "file_path": str(output_path),
-    }
-
-
-@app.post("/api/queue/{video_id}/teach-back")
-async def generate_teach_back(video_id: str):
-    """Knowledge Structure Engine (Sprint 7, Task 5): Teach Back is the second
-    Output of the Engine (after Learning Blueprint) — generated FROM the
-    already-produced Learning Blueprint JSON, not from the raw Transcript, so
-    it stays consistent with what the user already saw and doesn't re-spend
-    tokens re-reading the transcript. Requires Learning Blueprint to already
-    exist. Same independent, direct-async-handler, cache-first pattern as
-    /learning-blueprint (Task 3) — no Stage Guard involvement.
-    """
-    try:
-        item = queue_store.get_item(video_id)
-    except queue_store.QueueItemNotFoundError:
-        raise HTTPException(status_code=404, detail="項目不存在")
-
-    cached_path = teach_back.find_cached_teach_back(video_id)
-    cache_metrics.log_cache_event(
-        request_id=item.get("request_id"), video_id=video_id,
-        artifact_type="teach_back", hit=cached_path is not None,
-    )
-    if cached_path:
-        return {
-            "video_id": video_id,
-            "teach_back": teach_back.load_teach_back(cached_path),
-            "file_path": str(cached_path),
-        }
-
-    blueprint_path = item.get("learning_blueprint_path")
-    if not blueprint_path or not Path(blueprint_path).exists():
-        raise HTTPException(status_code=400, detail="請先建立 Learning Blueprint")
-
-    blueprint_data = learning_blueprint.load_learning_blueprint(Path(blueprint_path))
-    blueprint_items = teach_back.extract_blueprint_items(
-        blueprint_data.get("structure_type", "generic"), blueprint_data.get("content", {})
-    )
-
-    try:
-        data = await asyncio.to_thread(
-            gemini_client.generate_teach_back, title=item["title"], blueprint_items=blueprint_items,
-            request_id=item.get("request_id"), video_id=video_id,
-        )
-    except gemini_client.GeminiConfigError as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
-    except gemini_client.GeminiGenerationError as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=error_messages.classify_error(str(exc), stage="studynote"),
-        )
-
-    output_path = teach_back.save_teach_back(video_id=video_id, title=item["title"], data=data)
-
-    # Additive field only — no `status` change, so this never interacts with
-    # _stage_rank() / Stage Guard's forward-only state machine.
-    queue_store.update_item(video_id, teach_back_path=str(output_path))
-
-    return {
-        "video_id": video_id,
-        "teach_back": data,
-        "file_path": str(output_path),
-    }
-
-
-@app.get("/api/queue/{video_id}/teach-back/download")
-async def download_teach_back(video_id: str):
-    md_path = teach_back.find_cached_teach_back_markdown(video_id)
-    if not md_path or not md_path.exists():
-        raise HTTPException(status_code=404, detail="Teach Back 檔案不存在")
-
-    return FileResponse(
-        md_path,
-        media_type="text/markdown",
-        filename=md_path.name,
-    )
-
-
-@app.post("/api/queue/{video_id}/action-list")
-async def generate_action_list(video_id: str):
-    """Knowledge Structure Engine (Sprint 7, Task 6): third Output of the
-    Engine, generated FROM the Learning Blueprint like Teach Back (Task 5) —
-    reuses teach_back.extract_blueprint_items() directly rather than moving
-    it, per Feature First / Refactor Later (user decision, 2026-08-05). Same
-    independent, direct-async-handler, cache-first pattern as Task 3/5.
-    """
-    try:
-        item = queue_store.get_item(video_id)
-    except queue_store.QueueItemNotFoundError:
-        raise HTTPException(status_code=404, detail="項目不存在")
-
-    cached_path = action_list.find_cached_action_list(video_id)
-    cache_metrics.log_cache_event(
-        request_id=item.get("request_id"), video_id=video_id,
-        artifact_type="action_list", hit=cached_path is not None,
-    )
-    if cached_path:
-        return {
-            "video_id": video_id,
-            "action_list": action_list.load_action_list(cached_path),
-            "file_path": str(cached_path),
-        }
-
-    blueprint_path = item.get("learning_blueprint_path")
-    if not blueprint_path or not Path(blueprint_path).exists():
-        raise HTTPException(status_code=400, detail="請先建立 Learning Blueprint")
-
-    blueprint_data = learning_blueprint.load_learning_blueprint(Path(blueprint_path))
-    blueprint_items = teach_back.extract_blueprint_items(
-        blueprint_data.get("structure_type", "generic"), blueprint_data.get("content", {})
-    )
-
-    try:
-        data = await asyncio.to_thread(
-            gemini_client.generate_action_list, title=item["title"], blueprint_items=blueprint_items,
-            request_id=item.get("request_id"), video_id=video_id,
-        )
-    except gemini_client.GeminiConfigError as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
-    except gemini_client.GeminiGenerationError as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=error_messages.classify_error(str(exc), stage="studynote"),
-        )
-
-    output_path = action_list.save_action_list(video_id=video_id, title=item["title"], data=data)
-
-    # Additive field only — no `status` change, so this never interacts with
-    # _stage_rank() / Stage Guard's forward-only state machine.
-    queue_store.update_item(video_id, action_list_path=str(output_path))
-
-    return {
-        "video_id": video_id,
-        "action_list": data,
-        "file_path": str(output_path),
-    }
-
-
-@app.get("/api/queue/{video_id}/action-list/download")
-async def download_action_list(video_id: str):
-    md_path = action_list.find_cached_action_list_markdown(video_id)
-    if not md_path or not md_path.exists():
-        raise HTTPException(status_code=404, detail="Action List 檔案不存在")
-
-    return FileResponse(
-        md_path,
-        media_type="text/markdown",
-        filename=md_path.name,
-    )
-
-
-@app.post("/api/queue/{video_id}/review")
-async def generate_review(video_id: str):
-    """Knowledge Structure Engine (Sprint 7, Task 7): fourth Output of the
-    Engine (Active Recall) — generated FROM the Learning Blueprint, same
-    pattern as Teach Back (Task 5) / Action List (Task 6). Reuses
-    teach_back.extract_blueprint_items() directly, not moved (Feature First,
-    Refactor Later — Task 6 decision).
-    """
-    try:
-        item = queue_store.get_item(video_id)
-    except queue_store.QueueItemNotFoundError:
-        raise HTTPException(status_code=404, detail="項目不存在")
-
-    cached_path = review.find_cached_review(video_id)
-    cache_metrics.log_cache_event(
-        request_id=item.get("request_id"), video_id=video_id,
-        artifact_type="review", hit=cached_path is not None,
-    )
-    if cached_path:
-        return {
-            "video_id": video_id,
-            "review": review.load_review(cached_path),
-            "file_path": str(cached_path),
-        }
-
-    blueprint_path = item.get("learning_blueprint_path")
-    if not blueprint_path or not Path(blueprint_path).exists():
-        raise HTTPException(status_code=400, detail="請先建立 Learning Blueprint")
-
-    blueprint_data = learning_blueprint.load_learning_blueprint(Path(blueprint_path))
-    blueprint_items = teach_back.extract_blueprint_items(
-        blueprint_data.get("structure_type", "generic"), blueprint_data.get("content", {})
-    )
-
-    try:
-        data = await asyncio.to_thread(
-            gemini_client.generate_review, title=item["title"], blueprint_items=blueprint_items,
-            request_id=item.get("request_id"), video_id=video_id,
-        )
-    except gemini_client.GeminiConfigError as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
-    except gemini_client.GeminiGenerationError as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=error_messages.classify_error(str(exc), stage="studynote"),
-        )
-
-    output_path = review.save_review(video_id=video_id, title=item["title"], data=data)
-
-    # Additive field only — no `status` change, so this never interacts with
-    # _stage_rank() / Stage Guard's forward-only state machine.
-    queue_store.update_item(video_id, review_path=str(output_path))
-
-    return {
-        "video_id": video_id,
-        "review": data,
-        "file_path": str(output_path),
-    }
-
-
-@app.get("/api/queue/{video_id}/review/download")
-async def download_review(video_id: str):
-    md_path = review.find_cached_review_markdown(video_id)
-    if not md_path or not md_path.exists():
-        raise HTTPException(status_code=404, detail="Review 檔案不存在")
-
-    return FileResponse(
-        md_path,
-        media_type="text/markdown",
-        filename=md_path.name,
-    )
 
 
 @app.get("/api/queue/{video_id}/transcript/download")
