@@ -309,10 +309,17 @@ def _do_generate_transcript_for_item(video_id: str) -> dict:
     # failure (network hiccup, region block on the captions endpoint, etc.) is
     # swallowed here rather than failing the item — it just falls through to the
     # normal download+transcribe path below, same as "no captions available".
+    # The failure text itself is kept (not discarded) so that if the Whisper
+    # fallback below also fails, its cause isn't lost — see the
+    # TranscriptionError handler, which prefers this reason over a generic
+    # "no transcript" result when it's more informative (e.g. a temporary
+    # YouTube rate limit).
+    subtitle_fetch_error_text: str | None = None
     try:
         subtitle_text = transcript_service.fetch_subtitle_transcript(video_id)
-    except transcript_service.SubtitleFetchError:
+    except transcript_service.SubtitleFetchError as exc:
         subtitle_text = None
+        subtitle_fetch_error_text = str(exc)
 
     if subtitle_text:
         try:
@@ -388,10 +395,27 @@ def _do_generate_transcript_for_item(video_id: str) -> dict:
         try:
             text = transcript_service.transcribe_audio(audio_path, on_progress=_report_progress)
         except transcript_service.TranscriptionError as exc:
+            whisper_message = error_messages.classify_error(str(exc), stage="transcript")
+
+            # If the subtitle fetch also failed earlier (captured above) and its
+            # cause was a temporary rate limit, prefer that reason over Whisper's
+            # own generic "no transcript" result — but only in that exact
+            # collision, so every other failure combination (a non-rate-limit
+            # subtitle failure, or a Whisper failure that's already specific)
+            # is completely unchanged.
+            final_message = whisper_message
+            if subtitle_fetch_error_text is not None:
+                subtitle_message = error_messages.classify_error(subtitle_fetch_error_text, stage="transcript")
+                if (
+                    subtitle_message == error_messages._SERVICE_UNAVAILABLE_SOURCE
+                    and whisper_message == error_messages._NO_TRANSCRIPT
+                ):
+                    final_message = subtitle_message
+
             queue_store.update_item(
                 video_id,
                 status="Queued",
-                last_error=error_messages.classify_error(str(exc), stage="transcript"),
+                last_error=final_message,
                 last_error_stage="transcript",
                 progress_percent=None,
                 eta_seconds=None,
@@ -979,7 +1003,7 @@ async def generate_learning_blueprint(video_id: str):
     except gemini_client.GeminiGenerationError as exc:
         raise HTTPException(
             status_code=500,
-            detail=error_messages.classify_error(str(exc), stage="studynote"),
+            detail=error_messages.classify_error(str(exc), stage="learning_blueprint"),
         )
 
     output_path = learning_blueprint.save_learning_blueprint(

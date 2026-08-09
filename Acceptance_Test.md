@@ -573,6 +573,69 @@ HTTP Error 429: Too Many Requests
 
 ---
 
+## Feature 001 — Transcript / Learning Blueprint Error Handling Completion（Spec Kit / SDD Lite，User Story 1 + User Story 2）
+
+透過 Spec Kit（`.specify/`）建立的第一個功能，對應 `specs/001-error-handling-completion/`（spec.md／plan.md／research.md／quickstart.md／tasks.md）。涵蓋 User Story 1（P1，Transcript，2026-08-08 完成驗收）與 User Story 2（P2，Learning Blueprint，2026-08-09 完成驗收）。
+
+### User Story 1 — Transcript 429 正確歸因（T001-T007、T014）
+
+實作：`app/main.py` `_do_generate_transcript_for_item()`，保留字幕下載失敗（`SubtitleFetchError`）的原始錯誤文字；若 Whisper fallback 也失敗，僅在「字幕分類結果為限流／暫時性服務問題」且「Whisper 分類結果為既有的『找不到可用的逐字稿內容』通用訊息」兩者同時成立時，改用字幕的分類結果顯示給使用者，其餘情境維持既有行為不變。未修改 `app/error_messages.py`、`app/static/script.js`。
+
+- [ ] T003（quickstart.md Scenario 1：字幕 429 + Whisper fallback 也失敗）— **NOT REPRODUCED**
+- [x] T004（quickstart.md Scenario 2：字幕失敗、Whisper 成功，迴歸）— **PASS**
+- [ ] T005（quickstart.md Scenario 3：字幕非 429 原因失敗 + Whisper 也失敗，迴歸）— **NOT REPRODUCED**
+- [ ] T006（quickstart.md Scenario 4：失敗後 Retry 機制正常，迴歸）— **NOT REPRODUCED**
+- [x] T007（quickstart.md Scenario 5：既有成功路徑迴歸抽測，有字幕影片）— **PASS**
+- [x] T014（Final Phase，SC-005：Gemini/API 呼叫次數未增加）— **PASS**
+
+**Test Date:** 2026-08-08　**Test Result:** User Story 1 部分驗證通過（PASS：T004／T007／T014；NOT REPRODUCED：T003／T005／T006，皆非 PASS 亦非 FAIL）
+
+**T004 — PASS：** 測試影片 `https://www.youtube.com/shorts/FbIp25kvq7o`（無字幕）。Whisper fallback 成功，Transcript／Study Note 皆成功，Queue 正常走完，無任何錯誤訊息，行為與修改前一致。
+
+**T007 — PASS：** 測試影片 `https://www.youtube.com/watch?v=HjMO5oBvcRA`（有字幕）。Queue 處理成功、Transcript／Study Note 皆成功、下載 200 OK。因 UI 中間狀態轉換過快，人工無法單靠觀察確認是否為字幕優先路徑，改以 `outputs/logs/runtime.jsonl` 查證：該影片 `transcript` 階段僅耗時 7.129 秒（`request_id=e81457b6-9f6b-42ff-ae3e-63f4fab875f0`），遠低於音訊下載＋本機 Whisper 轉錄所需時間量級，確認實際走的是字幕優先路徑（`main.py` 既有的 317-336 行，本次修改完全未觸碰的程式碼），而非 Whisper fallback。
+
+**T014 / SC-005 — PASS：** 比對 `outputs/logs/gemini_usage.jsonl` 修改前（2026-08-07，`qrFE4Zne-1I`／`AUrx6yMn1c0` 等）與修改後（2026-08-08，`FbIp25kvq7o`／`HjMO5oBvcRA` 及本輪其餘 10 支測試影片）的真實紀錄，成功路徑的 Gemini 呼叫模式完全一致：每支影片固定 `quick_summary` + `study_note` 共 2 次呼叫，無任何一筆記錄出現額外或重複呼叫。
+
+**T003／T005／T006 — NOT REPRODUCED（環境相依，未強制觸發，未修改程式碼或加入測試專用 hook）：**
+- **T003**（字幕 429 + Whisper 也失敗）：連續送出 5 支不同影片（`43knP15HEok`／`n8OTYXkHwWk`／`dUDi-F6eAvk`／`VUj6zDFs-2Q`／`-451m1UVYCo`）嘗試誘發 YouTube 字幕端限流，5/5 皆成功完成，未觀察到任何 429。此情境依賴 YouTube 端是否恰好觸發限流，屬環境相依。
+- **T005**（字幕非 429 原因失敗 + Whisper 也失敗）：兩度嘗試以純音樂／無人聲 Shorts 誘發 Whisper 產生空逐字稿（`MFZZrkSZrcw`、`VQC3Uq9MF-Q`），兩次 Whisper 皆未失敗，而是產生了看似合理但與影片實際內容無關的 hallucinated 文字，Transcript／Study Note 皆判定為成功，無法重現「Whisper 也失敗」這個前提條件。
+- **T006**（失敗後 Retry 正常運作）：嘗試將自有頻道影片設為 Private 以製造失敗狀態，但失敗發生於 Queue item 建立之前（`POST /api/queue` 回傳 400「無法取得影片資訊」），不會產生可供測試 Retry 的 Queue Card，因此無法重現「Queue item 已存在 → 處理失敗 → 可按 Retry」的測試前提。
+
+三項 NOT REPRODUCED 皆非程式邏輯缺陷造成，是測試前提條件本身依賴難以主動控制的外部環境（YouTube 限流時機、Whisper 對無語音內容的實際行為、失敗發生的時間點），依使用者指示不視為 PASS 亦不視為 FAIL。
+
+**Human Test 過程中另外發現一個獨立問題（不屬於本次 Feature 001 範圍，未修改程式碼處理）：** Whisper 對純音樂／無實際語音內容的影片，可能產生看似合理但與影片內容無關的 hallucinated 逐字稿，而非回傳空結果或失敗；系統目前會將這類 hallucinated 內容視為有效 Transcript 並繼續產生 Study Note。重現案例：`https://www.youtube.com/shorts/MFZZrkSZrcw`、`https://www.youtube.com/shorts/VQC3Uq9MF-Q`。列為 Future Backlog Candidate，詳見 `specs/001-error-handling-completion/research.md`。
+
+僅修改 `app/main.py`（`_do_generate_transcript_for_item()` 內兩處：保留字幕失敗文字、`TranscriptionError` 例外處理新增優先順序判斷）。未修改 `app/error_messages.py`、`app/static/script.js`、Workflow、Stage Guard、Single Worker、Queue Store 寫入結構、History、Export、Chrome Extension。
+
+### User Story 2 — Learning Blueprint 正確歸因（T008-T013）
+
+實作：`app/error_messages.py` 新增 `_SERVICE_UNAVAILABLE_LEARNING_BLUEPRINT` 常數，`classify_error()` 的 quota/429 判斷分支由二選一（`studynote` / 其他）改為三選一，新增 `learning_blueprint` → 新常數；Gemini-aware 路由條件由 `stage == "studynote"` 擴大為 `stage in ("studynote", "learning_blueprint")`，使 Learning Blueprint 的非 quota 失敗（安全過濾／未知錯誤）也能正確路由，不再落入 YouTube 導向的分類。`app/main.py`：`generate_learning_blueprint()` 的 `GeminiGenerationError` 例外處理改用 `stage="learning_blueprint"`（原為 `stage="studynote"`）。`GeminiConfigError` 處理、Teach Back／Action List／Review 三個模組皆未修改。
+
+- [x] T008（`app/error_messages.py` 新增常數＋分流邏輯）— 已實作
+- [x] T009（`app/main.py` 改用新 stage）— 已實作
+- [x] T010（quickstart.md Scenario 6：Learning Blueprint Gemini 失敗歸因）— **PASS**
+- [x] T011（quickstart.md Scenario 7：失敗後 Retry，條件解除即成功）— **PASS**
+- [x] T012（quickstart.md Scenario 8：Teach Back／Action List／Review 迴歸，不受影響）— **PASS**
+- [x] T013（quickstart.md Scenario 9：`GeminiConfigError`／金鑰缺失路徑不受影響）— **PASS**
+
+**Test Date:** 2026-08-09　**Test Result:** User Story 2 全部驗證通過（PASS：T010／T011／T012／T013）
+
+**T010 — PASS：** 測試影片 `A50IsjwUAjs`（This Changes English Learning，Transcript 已完成、無 Learning Blueprint 快取）。於獨立測試環境（`127.0.0.1:8001`，暫時性、僅限單一 process 的無效 `GEMINI_API_KEY`，未寫入 `.env`）點擊「建立知識架構」，畫面顯示「Learning Blueprint 服務目前無法使用或過於忙碌，請稍後再試（可能是 Gemini API 額度已用完）。」，明確包含「Learning Blueprint」字樣、無 Study Note 用語。交叉比對 `outputs/logs/errors.jsonl` 新增一筆 `artifact_type: learning_blueprint`、`API_KEY_INVALID` 錯誤特徵（`logged_at: 2026-08-09T03:07:31Z`），`gemini_usage.jsonl` 與 `outputs/learning_blueprints/` 皆無該影片紀錄（純失敗、無快取污染），確認訊息確實來自本次修改的分類邏輯。
+
+**T011 — PASS：** 延續 T010 失敗狀態，將 8001 測試 process 換成正常讀取 `.env` 真實金鑰（未修改 `.env` 本身）後，於同一張 Queue Card 再次點擊同一顆「建立知識架構」按鈕，紅色錯誤訊息消失、Learning Blueprint 正常顯示。交叉比對 `outputs/logs/gemini_usage.jsonl` 新增一筆 `A50IsjwUAjs` 的 `learning_blueprint` 真實成功紀錄（真實 token 用量與費用，`logged_at: 2026-08-09T03:16:22Z`，非快取命中），確認為真正重新呼叫 Gemini 成功，而非讀取舊快取；`errors.jsonl` 於此之後無新增失敗紀錄。
+
+**T012 — PASS：** 於已有 Learning Blueprint 快取的 `A50IsjwUAjs` 上，沿用 T010 的無效金鑰測試環境，依序對 Teach Back／Action List／Review 三個模組觸發同類型失敗。三者畫面皆維持原本 Study Note 用語的錯誤訊息，未出現「Learning Blueprint」字樣，Retry 提示皆正常。交叉比對 `errors.jsonl` 新增三筆獨立紀錄（`artifact_type` 分別為 `teach_back`／`action_list`／`review`，皆為 `API_KEY_INVALID` 特徵，`logged_at` 03:28:14／03:28:42／03:28:45），確認三個模組各自獨立呼叫、各自失敗，且程式碼（`app/main.py` 對應三處例外處理）確認皆仍為 `stage="studynote"`，本次未修改。
+
+**T013 — PASS：** 測試影片 `LJqnEPXWr4A`（Transcript 已完成、無 Learning Blueprint 快取）。將 8001 測試 process 改為金鑰缺失狀態（於 Python 行程內直接以 `os.environ['GEMINI_API_KEY']=''` 設定，避免 Windows 環境變數「空字串等同刪除」的限制導致 `load_dotenv()` 誤載入真實金鑰；未修改 `.env`）後點擊「建立知識架構」，畫面顯示原始例外文字「缺少 GEMINI_API_KEY 環境變數，請先設定後再試」，與 `app/gemini_client.py` 的 `GeminiConfigError` 訊息逐字相符，未經過 `classify_error()` 分類。交叉比對 8001 test server 自身 request log（該請求回應 `500 Internal Server Error`）確認請求確實送達；`errors.jsonl` 無新增紀錄（`GeminiConfigError` 發生於 Gemini 呼叫之前，本就不經過該記錄點，這也是驗證項之一）；`gemini_usage.jsonl` 與快取目錄皆無該影片紀錄，確認未實際呼叫 Gemini。`app/main.py` 1001-1002 行的 `GeminiConfigError` 處理本次未修改。
+
+**Human Test 過程中的測試方法記錄（皆未修改 production code、`.env`，或新增測試專用 hook）：**
+- 測試方式：以獨立測試伺服器（`127.0.0.1:8001`，與正式 `127.0.0.1:8000` 完全分離的 process）搭配暫時性、僅限單一 process 的 `GEMINI_API_KEY` 覆寫，模擬 Gemini 呼叫失敗／金鑰缺失，測試後即終止該 process，不影響正式伺服器與 `.env`。
+- 過程中發現並修正兩個測試方法本身的誤區（非程式邏輯缺陷）：(1) `generate_learning_blueprint()` 呼叫 Gemini 前會先檢查磁碟快取（`app/main.py` 981-986 行，既有邏輯），若選到已有快取的影片，不論金鑰是否有效都不會真正呼叫 Gemini，需改選尚無快取的影片才能真正測到失敗路徑；(2) Windows 環境變數無法儲存「存在但空字串」的狀態（`$env:VAR=""` 等同刪除該變數），導致 `load_dotenv()`（`override=False`）誤判變數不存在而從 `.env` 補上真實金鑰，改用 Python 行程內直接設定 `os.environ` 的方式（不經過 Windows 建立子行程時的環境區塊）才能穩定重現金鑰缺失狀態。
+
+僅修改 `app/error_messages.py`（T008：新增 1 個常數、擴大 2 處判斷）、`app/main.py`（T009：`generate_learning_blueprint()` 例外處理 1 行，`stage="studynote"` → `stage="learning_blueprint"`）。未修改 `app/static/script.js`、Workflow、Stage Guard、Single Worker、Queue Store 寫入結構、History、Export、Chrome Extension、Teach Back／Action List／Review 模組本身。
+
+---
+
 # MVP Acceptance
 
 The Lite MVP is complete when:

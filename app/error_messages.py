@@ -8,6 +8,7 @@ _PRIVATE_OR_UNAVAILABLE = "這支影片是私人影片或已下架，無法存�
 _YOUTUBE_RESTRICTED = "YouTube 限制存取這支影片（可能是地區限制、年齡限制或版權限制）。"
 _NETWORK_ISSUE = "網路連線發生問題，請檢查網路狀態後再試一次。"
 _SERVICE_UNAVAILABLE = "AI 處理服務目前無法使用或過於忙碌，請稍後再試（可能是 Gemini API 額度已用完）。"
+_SERVICE_UNAVAILABLE_LEARNING_BLUEPRINT = "Learning Blueprint 服務目前無法使用或過於忙碌，請稍後再試（可能是 Gemini API 額度已用完）。"
 _SERVICE_UNAVAILABLE_SOURCE = "服務目前無法使用或過於忙碌，請稍後再試。"
 _CONTENT_FILTERED = "Gemini 判定這段逐字稿內容不適合產生 Study Note（可能觸發安全過濾），請嘗試其他影片。"
 _UNKNOWN = "處理過程發生未預期的問題，請重試。"
@@ -37,9 +38,13 @@ def classify_error(raw_message: str, stage: str = "") -> str:
         "quota", "429", "resource_exhausted", "503", "overloaded", "rate limit",
         "api key", "unauthorized", "401", "403",
     )):
-        return _SERVICE_UNAVAILABLE if stage == "studynote" else _SERVICE_UNAVAILABLE_SOURCE
+        if stage == "studynote":
+            return _SERVICE_UNAVAILABLE
+        if stage == "learning_blueprint":
+            return _SERVICE_UNAVAILABLE_LEARNING_BLUEPRINT
+        return _SERVICE_UNAVAILABLE_SOURCE
 
-    if stage == "studynote":
+    if stage in ("studynote", "learning_blueprint"):
         if any(keyword in text for keyword in ("safety", "blocked", "recitation", "prohibited_content")):
             return _CONTENT_FILTERED
         return _UNKNOWN
