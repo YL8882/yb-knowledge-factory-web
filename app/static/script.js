@@ -84,15 +84,20 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Task 2 (Sprint 8): independent collapse state per module per video —
     // NOT an accordion (no mutual exclusion, no "only one open" rule; each
-    // Set below is its own module and doesn't touch the others). Defaults to
-    // expanded (empty Set) to match pre-Task-2 behavior; a card only appears
-    // here once the user actually collapses it, same persistence pattern as
+    // Set below is its own module and doesn't touch the others). A card only
+    // appears here once collapsed, same persistence pattern as
     // expandedKnowledgeOutlineCards above.
     const collapsedRapidLearningCards = new Set();
     const collapsedLearningBlueprintCards = new Set();
     const collapsedTeachBackCards = new Set();
     const collapsedActionListCards = new Set();
     const collapsedReviewCards = new Set();
+
+    // Feature 002: video_ids that have already had the sets above seeded
+    // with a default-collapsed state. Without this guard, renderQueue()
+    // rebuilding every poll tick would re-add a video_id the user just
+    // expanded, undoing their click on the next tick.
+    const collapsedDefaultsSeeded = new Set();
 
     // Remembered download folder (File System Access API, Chrome/Edge only). The handle
     // itself is persisted in IndexedDB so it survives a page reload; autoDownload() writes
@@ -639,6 +644,15 @@ document.addEventListener('DOMContentLoaded', function() {
         queueEmpty.style.display = 'none';
 
         items.forEach(function(item) {
+            if (!collapsedDefaultsSeeded.has(item.video_id)) {
+                collapsedDefaultsSeeded.add(item.video_id);
+                collapsedRapidLearningCards.add(item.video_id);
+                collapsedLearningBlueprintCards.add(item.video_id);
+                collapsedTeachBackCards.add(item.video_id);
+                collapsedActionListCards.add(item.video_id);
+                collapsedReviewCards.add(item.video_id);
+            }
+
             const li = document.createElement('li');
             li.className = 'queue-item';
             li.setAttribute('data-video-id', item.video_id);
@@ -1299,9 +1313,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // renders nothing rather than crashing).
     // Task 2 (Sprint 8): shared collapsible header for the module sections
     // below — independent per module (no accordion, no mutual exclusion).
-    // Defaults to expanded (collapsedSet empty), matching pre-Task-2
-    // behavior; toggling is a pure class flip, same as the existing
-    // Rapid Learning "展開完整內容" toggle — never re-fetches or regenerates.
+    // Defaults to collapsed (Feature 002 seeds collapsedSet in renderQueue());
+    // toggling is a pure class flip, same as the existing Rapid Learning
+    // "展開完整內容" toggle — never re-fetches or regenerates.
     function buildModuleToggleHeader(icon, label, videoId, collapsedSet, bodyEl) {
         const isCollapsed = collapsedSet.has(videoId);
         bodyEl.classList.toggle('is-hidden', isCollapsed);

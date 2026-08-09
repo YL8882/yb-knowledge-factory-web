@@ -636,6 +636,37 @@ HTTP Error 429: Too Many Requests
 
 ---
 
+## Feature 002 — Queue Card 模組預設收合（Default Collapsed Learning Modules）
+
+依 `Development_Workflow_Standard.md` 流程執行：Proposal → Scope Freeze → Implementation → Self Test → Human Test → Acceptance。對應 `TODO.md` Product Backlog「Queue Card 預設保持簡潔」項目，源自 Sprint 8 Task 2 Human Test 當場提出的 UX 落差。
+
+實作：`app/static/script.js` 新增 `collapsedDefaultsSeeded` Set，`renderQueue()` 於每個 video_id 首次渲染時，一次把既有的 5 個模組收合 Set（`collapsedRapidLearningCards`／`collapsedLearningBlueprintCards`／`collapsedTeachBackCards`／`collapsedActionListCards`／`collapsedReviewCards`，Sprint 8 Task 2 既有機制）都加入該 video_id，使其預設為收合狀態；沿用既有 `buildModuleToggleHeader()` 展開／收合互動邏輯與 CSS class（`is-hidden`），未新增樣式。未修改後端、Gemini、Prompt、付費邏輯。
+
+- [x] AC #1（五個模組首次載入預設收合）— **PASS**
+- [x] AC #2（各模組獨立展開／收合，互不影響）— **PASS**
+- [x] AC #3（已有內容的模組收合後可重新展開，內容不變、不重新產生）— **PASS**
+- [x] AC #4（F5 重新整理後維持預設收合，不重新呼叫 Gemini）— **PASS**
+- [x] Regression（Queue／History／Download）— **PASS**
+- [ ] Regression（Queue Card Transcript／Study Note 開啟）— **N/A / Existing Behavior**
+
+**Test Date:** 2026-08-09　**Test Result:** 全數驗證通過（PASS：AC #1-#4、Queue／History／Download Regression；N/A：Transcript／Study Note 開啟按鈕)
+
+**AC #1 — PASS：** 測試卡片 `K6npgLhA7r8`（Rapid Learning／Learning Blueprint／Teach Back／Action List／Review 五個模組皆已有 cached content）。首次渲染時五個模組箭頭皆為 `▶`，內容本體皆未顯示，未自動展開。
+
+**AC #2 — PASS：** 展開 Learning Blueprint 後，其餘四個模組維持原本收合狀態不受影響；再展開 Teach Back 後，Learning Blueprint 維持展開、其餘三個模組維持收合，確認非 Accordion、各模組獨立運作。
+
+**AC #3 — PASS：** 收合已展開的 Learning Blueprint 後再重新展開，內容與收合前完全相同，無空白、無重新產生跡象。
+
+**AC #4 — PASS：** F5 重新整理後，五個模組重新回到預設收合狀態。Network 面板觀察到既有模組（`/learning-blueprint`／`/action-list`／`/review` 等）的 POST 請求，經查證為 Sprint 7 Task 3/4/5/6/7 既有機制（`fetchXIntoCache()` 系列函式，`app/static/script.js`，F5 後瀏覽器記憶體內的 client-side cache 清空，需重新用同一個既有 POST 端點把已存在內容拉回瀏覽器；後端四個端點皆為 cache-first，命中磁碟快取即直接回傳，不觸及 Gemini），Feature 002 完全未修改這些函式。交叉比對 `outputs/logs/gemini_usage.jsonl`／`outputs/logs/errors.jsonl`：F5 前後最後一筆紀錄相同，皆無新增，確認未產生任何新的 Gemini 呼叫或 token／費用。
+
+**Regression（Queue／History／Download）— PASS：** Queue 列表捲動、卡片排列、Badge 狀態顯示正常；History 頁面正常載入、卡片顯示正常；History 頁面「下載知識包」功能正常觸發下載。
+
+**Regression（Transcript／Study Note 開啟）— N/A / Existing Behavior：** 原始 Human Test 步驟誤用「開啟 Transcript／開啟 Study Note」描述 Queue Card，經查證 `app/static/script.js` `buildReportLine()`（581-606 行）證實 Queue Card 上的 Transcript／Study Note 原本就只是純文字完成狀態（例如「✅ 已完成：Transcript、Study Note 已自動下載，可以刪除釋放暫存區空間」），從未有可點擊的開啟連結——「開啟 Transcript／開啟 Study Note」是 History 頁面（Knowledge Library，Sprint 5 Task 3）專屬既有設計，與 Queue 頁面無關。確認為既有產品設計、非 Feature 002 造成的 Regression，亦與後續規劃中 Transcript／Study Note／Learning Blueprint 等模組的 Freemium／額度／付費機制（未來 Scope，不併入本次）有關，本次不新增按鈕、不修改 UI、不修改 Gemini 呼叫或付費邏輯。
+
+僅修改 `app/static/script.js`（`collapsedDefaultsSeeded` 新增、`renderQueue()` 一處 seeding 邏輯、`buildModuleToggleHeader()` 上方一處註解更新）。未修改 `app/main.py`、`app/gemini_client.py`、`app/error_messages.py`、`app/static/style.css`、Workflow、Stage Guard、Single Worker、Queue Store 寫入結構、History、Export、Chrome Extension、付費／額度機制。
+
+---
+
 # MVP Acceptance
 
 The Lite MVP is complete when:
