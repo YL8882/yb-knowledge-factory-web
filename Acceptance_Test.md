@@ -667,7 +667,7 @@ HTTP Error 429: Too Many Requests
 
 ---
 
-## Feature 003 — Decouple Study Note & Quick Summary from the Automatic Pipeline（Human Test 進行中）
+## Feature 003 — Decouple Study Note & Quick Summary from the Automatic Pipeline ✅ Completed
 
 依 Phase A（Cost Control Audit）與 Phase B（Freemium Boundary）Proposal 執行,核心目標：加入新 URL 後只自動產生 Transcript（FREE / LOCAL),Quick Summary 與 Study Note 改為使用者主動觸發,Rapid Learning／Learning Blueprint 顯示條件由 `hasStudyNote` 改為 `hasTranscript`（Decision 2-B),Teach Back／Action List／Review 依賴關係不變。本節於 Human Test 過程中持續記錄,尚未完成全部驗收。
 
@@ -689,7 +689,7 @@ HTTP Error 429: Too Many Requests
 
 僅修改 `app/static/script.js` 這兩處文字與其註解。未修改後端、Gemini 呼叫邏輯、按鈕行為、Freemium／Paywall 邏輯,未擴大 Feature 003 Scope。`node --check` 語法檢查通過。
 
-**尚待進行**：重新執行 Human Test Step 1 確認文字修正後顯示正確,以及 Step 2 以後的其餘 Acceptance Criteria。
+**補充（2026-08-10）**：此處記錄的重新驗證需求,已由下方「Revised Scope」Step 1（AC1 重新測試）與 Regression Test G Step 1-2 涵蓋——`ZqK8q5fymXQ` 加入後 Transcript Ready 狀態正確顯示「產生 Study Note」「30秒快速學習」兩個入口、未再出現舊版「Generating Study Note」文字,確認此文字 Bug 已修復且未再重現,視為解決,不再是獨立待辦。
 
 ### Feature 003 Revised Scope — Freemium / Cost-Control Architecture 收斂
 
@@ -717,8 +717,31 @@ Human Review 決定調整 Feature 003 Scope（不建立 Feature 004）：移除 
 - **Step 2（AC3,30秒快速學習新格式)**：點擊後新增剛好 1 筆 `artifact_type: "knowledge_outline"`,內容含一句話／5 個重點／「適合繼續深入」三段,精簡、無「展開完整內容」次層按鈕 — PASS
 - **Step 3（AC4,Study Note 8 章節新格式)**：點擊後新增剛好 1 筆 `artifact_type: "study_note"`（該影片累計 2 筆,無其他非預期呼叫),實際檔案確認 8 章節標題順序正確（Summary／Key Points／Important Concepts／Flow 關鍵脈絡／Workflow 操作步驟／Key Takeaways／Quiz／Tags),抽查 Flow（純文字箭頭)、Workflow（Step 1/2...)、Quiz（Q/A)內容品質皆符合規格 — PASS
 - **Step 4（AC5,Study Note Ready 最終按鈕配置)**：只顯示「30秒快速學習」（可收合)與「下載知識包」,無「產生 Study Note」按鈕,無 Learning Blueprint／Teach Back／Action List／Review — PASS
+- **Step 5（AC6,舊卡片不再顯示已移除模組內容)**：先前已有 Learning Blueprint／Teach Back／Action List／Review 等 artifact 的歷史項目（測試案例：`video_id=htfFnyRCRfM`,同時具備全部 4 個舊 artifact path 欄位),Queue 卡片畫面僅顯示 Transcript／Study Note／30秒快速學習／下載知識包,不再出現這 4 個已移除模組的任何區塊、按鈕或文字,Console 無 JavaScript 錯誤 — PASS
 
-**尚未正式驗收（下次繼續)**：AC6（舊卡片—先前已有 Learning Blueprint 等 artifact 的歷史項目—不再顯示這些內容,已於 Frontend Regression 的 Human Test 中非正式觀察到成立,但未列為獨立步驟正式記錄)、Regression Test G 段（Queue／History／Download／Export 完整迴歸)尚未逐項執行。
+**Test Date:** 2026-08-10　**Test Result（Step 5 / AC6）：** PASS
+
+### Regression Test G — Queue／History／Download／Export 完整迴歸 ✅ Completed
+
+- **Step 1（Queue — 頁面載入現有項目)**：既有 Queue 項目正常顯示，未發生 97 → 0 清空；卡片正常 render；Transcript／Study Note 狀態正常；30秒快速學習／下載知識包正常顯示；Learning Blueprint／Teach Back／Action List／Review 未重新出現；Console 無 JavaScript Error；畫面可見相關 Network requests 為 200 — PASS
+- **Step 2（Queue — 新增新影片，只自動產生 Transcript)**：新 YouTube URL 成功加入 Queue,Transcript 自動產生完成,未自動產生 Study Note,未自動產生「30秒快速學習」,Transcript 完成後 Study Note／30秒快速學習維持手動觸發狀態,Console 無 JavaScript Error,相關 Network request 回傳 200,確認 Feature 003 Pipeline 解耦行為正確 — PASS
+- **Step 3（Queue — 手動觸發 Study Note)**：手動點擊「產生 Study Note」成功,Study Note 正常進入產生流程並完成,內容正常產生,卡片狀態正確切換為 Completed,完成後「產生 Study Note」按鈕消失,只保留「30秒快速學習」與「下載知識包」,Console 無 JavaScript Error,Network request 正常完成 — PASS
+- **Step 4（Queue — 手動觸發「30秒快速學習」)**：手動點擊「30秒快速學習」成功,Loading 狀態正常,內容成功產生（一句話快速理解／5 個重點／適合繼續深入),展開／收合功能正常,Console 無 JavaScript Error,Network request 正常完成、POST 回傳 200 — PASS
+- **Step 5（Queue — 刪除項目)**：點擊卡片右上角「×」,卡片直接從 Queue 移除（無確認視窗，此為既有行為非本次異常),僅該卡片被移除,其餘 Queue 卡片正常存在與顯示,未發生整批消失或畫面錯亂,Console 無 JavaScript Error；補充確認「×」為「從 Queue 移除」而非刪除歷史資料——被移除影片仍存在「歷史記錄」頁面 — PASS
+- **Step 6（Queue — 單支「下載知識包」)**：點擊「📦 下載知識包」,ZIP 成功下載並解壓縮,內容為 `Transcript.md`＋`Study_Note.md`,zip 內無 Learning Blueprint／Teach Back／Action List／Review 等已移除模組檔案,其他 Queue 卡片不受影響,Console 無 JavaScript Error — PASS
+- **Step 7（Queue — 「匯出全部知識包」批次匯出)**：點擊「📦 匯出全部知識包」成功執行,`YB_Knowledge_Packages` 顯示 97 個項目,各影片獨立資料夾保存,抽查資料夾內容只有 `Transcript.md`＋`Study_Note.md`,無 Learning Blueprint／Teach Back／Action List／Review 等已移除模組檔案,批次匯出結構正常 — PASS
+- **Step 8（History — 頁面列表正常)**：History（知識庫）頁面正常開啟,歷史卡片數量正常（無空白或大量消失),Transcript／Study Note 狀態正常顯示,YouTube 來源連結正常顯示；完整項目正確顯示 Transcript／Study Note／Knowledge Package 皆「已產生」且下載按鈕正常顯示；抽查一張缺檔卡片（Transcript 已產生、Study Note／Knowledge Package 缺失）UI 正確反映缺失狀態,屬該項目本身資料不完整,非 Regression；未出現 Learning Blueprint／Teach Back／Action List／Review — PASS
+- **Step 9（History — 「開啟 Transcript」／「開啟 Study Note」)**：點擊「開啟 Transcript」於新分頁正常顯示內容、未觸發下載,點擊「開啟 Study Note」於新分頁正常顯示內容、未觸發下載,Console 無 JavaScript Error — PASS
+- **Step 10（History — 單支匯出)**：從 History 頁面點擊「下載知識包」,ZIP 成功下載並解壓縮,內容為 `Transcript.md`＋`Study_Note.md`,無 Learning Blueprint／Teach Back／Action List／Review 等已移除模組檔案,Console 無 JavaScript Error — PASS
+- **Step 11（History — 「匯出全部知識包」批次匯出，含缺檔自動排除)**：點擊「📦 匯出全部知識包」成功執行,ZIP 成功下載並解壓縮,缺檔項目（Transcript 有、Study Note 缺失）未出現在 ZIP 中,其餘完整項目正常匯出,抽查資料夾內容正確（`Transcript.md`＋`Study_Note.md`),無 Learning Blueprint／Teach Back／Action List／Review 等已移除模組檔案,Console 無 JavaScript Error — PASS
+
+**Test Date:** 2026-08-10　**Test Result（Step 1-11，全數 PASS）：** Regression Test G 完整迴歸（Queue 新增／手動觸發 Study Note／手動觸發 30秒快速學習／刪除／單支匯出／批次匯出，History 列表／開啟／單支匯出／批次匯出）全部驗證通過，無任何 Regression、無 Console 錯誤、無已移除模組（Learning Blueprint／Teach Back／Action List／Review）殘留。
+
+### Feature 003 — AC6 + Regression Test G 驗收彙整
+
+AC6（Step 5）與 Regression Test G（Step 1-11）已全數由使用者於瀏覽器實際操作完成 Human Test，結果全部 PASS。至此 Feature 003（Revised Scope）Revised Scope Acceptance Criteria（AC1、AC3-AC6）與完整迴歸測試皆已完成，Feature 003 Human Test 階段結束。
+
+**尚未進行：** Regression Test G 其餘步驟（Queue 新增／手動觸發／刪除／匯出,History,Download,Export)待逐項執行。
 
 ---
 

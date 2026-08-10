@@ -435,3 +435,10 @@ Future versions only.
 - [ ] 使用者輸入驗證失敗未被記錄（Sprint 8.5A Task 4 Human Test 期間使用者提出，Product Analytics 範疇，非 Error Intelligence 必備）：`POST /api/queue` 的 `InvalidYouTubeURLError`／`VideoMetadataError` 兩個拒絕點都在 `queue_store.add_item()`（產生 `request_id`）之前就以 `HTTPException` 擋掉，目前完全不會產生任何 Runtime／Error 紀錄，因此無法得知有多少使用者因輸入格式錯誤而失敗。若要補上，建議新增獨立的 `validation` 統計（例如 `invalid_url`／`unsupported_video`），不要併入 Runtime Error 統計以免混淆「系統執行失敗」與「使用者輸入錯誤」兩種不同性質的事件。
 - [ ] `GeminiConfigError`（缺少 `GEMINI_API_KEY`）未被 Error Intelligence 記錄（Sprint 8.5A Task 4 Known Limitation）：發生在 `gemini_client._generate_content()` 攔截點「之前」，屬一次性環境設定問題而非執行期錯誤，Task 4 判斷優先度較低，先不處理。
 - [ ] 5 個獨立 Learning Model 端點（Knowledge Outline／Learning Blueprint／Teach Back／Action List／Review）若因非 Gemini 原因失敗，目前沒有既有的 `last_error` 記錄點可掛 Error Intelligence（Sprint 8.5A Task 4 Known Limitation），維持原狀。
+- [ ] **Product Flow / Monetization Requirement（下一階段，非 Feature 003 範圍，目前未實作 Freemium／Paywall）：** 修正先前記錄的認知落差——「30秒快速學習」（Knowledge Outline）**不是永久免費功能**。既定商業邏輯（Human 於 2026-08-10 確認）：
+  1. Transcript：永久免費、自動產生、自動下載、不使用 Gemini。
+  2. 30秒快速學習：使用者主動觸發，每次約 1 次 Gemini 呼叫；新使用者前 10 次免費，免費額度用完後採低額收費，定位為低成本快速學習產品。
+  3. 完整 Study Note：使用者主動觸發，每次約 1 次 Gemini 呼叫，定位為較高價值的付費學習內容。
+  4. 完整知識包：使用既有 Study Note／Transcript 等 artifacts 打包匯出，不額外呼叫 Gemini，隨完整 Study Note／付費方案提供。
+
+  目前程式（Feature 003 Revised Scope）尚未實作任何用量計數、免費額度扣減或收費邏輯——Transcript／Study Note／30秒快速學習皆為使用者可無限次主動觸發，不受本項目影響。本項純粹記錄下一階段 Freemium／Paywall 設計依據，待獨立 Proposal 提出並確認 Scope 後才實作，不併入 Feature 003 或任何現行 Sprint/Task。
