@@ -442,3 +442,4 @@ Future versions only.
   4. 完整知識包：使用既有 Study Note／Transcript 等 artifacts 打包匯出，不額外呼叫 Gemini，隨完整 Study Note／付費方案提供。
 
   目前程式（Feature 003 Revised Scope）尚未實作任何用量計數、免費額度扣減或收費邏輯——Transcript／Study Note／30秒快速學習皆為使用者可無限次主動觸發，不受本項目影響。本項純粹記錄下一階段 Freemium／Paywall 設計依據，待獨立 Proposal 提出並確認 Scope 後才實作，不併入 Feature 003 或任何現行 Sprint/Task。
+- [ ] **Bug Candidate — Queue Card UI 狀態與實際 Study Note 完成狀態不同步（Stale Processing State）**（Feature 004 Human Test Step 5 期間發現，2026-08-10，非 Feature 004 範圍，未進行 RCA，未修復）：Study Note 實際已在後端完成，但 Queue 卡片持續停留在「Generating Study Note」、進度條持續運行；手動重新整理瀏覽器後卡片立即恢復正常 Completed 狀態。目前僅為單次觀察到的現象，尚未定位根本原因（可能與 `renderQueue()` 輪詢時機、卡片重繪判斷條件、或 Stage Guard 狀態回報時序有關，皆待後續實際 RCA 確認，不可預先假設）。觸發條件：等下次再次穩定重現時，記錄當下的 Queue 狀態與 timing，再依真實案例展開獨立 RCA 與修正，不要在沒有可重現案例時純靠猜測修改。

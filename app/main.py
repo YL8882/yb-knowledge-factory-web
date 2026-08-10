@@ -23,7 +23,7 @@ import queue_store
 import study_note
 import transcript as transcript_service
 import youtube
-from observability import cache_metrics, error_metrics, runtime_metrics
+from observability import cache_metrics, error_metrics, runtime_metrics, usage_quota
 
 load_dotenv()
 
@@ -928,6 +928,14 @@ async def generate_knowledge_outline(video_id: str):
             detail=error_messages.classify_error(str(exc), stage="studynote"),
         )
 
+    # Feature 004 — Usage Quota Foundation: counts only a real, successful
+    # Gemini call (never a cache hit, never a failed call — both handled
+    # above without reaching this line). Counted here rather than after the
+    # save below because the Gemini cost is already incurred at this point,
+    # regardless of whether the subsequent local save succeeds. Measurement
+    # only — never blocks or limits this call.
+    usage_quota.record_knowledge_outline_success()
+
     output_path = knowledge_outline.save_knowledge_outline(
         video_id=video_id, title=item["title"], body=body
     )
@@ -941,6 +949,16 @@ async def generate_knowledge_outline(video_id: str):
         "knowledge_outline": body,
         "file_path": str(output_path),
     }
+
+
+@app.get("/api/usage/knowledge-outline")
+async def get_knowledge_outline_usage():
+    """Feature 004 — Usage Quota Foundation: read-only lifetime usage
+    snapshot for 30秒快速學習 (Knowledge Outline). Informational only — not
+    yet wired into any UI, and calling this endpoint never itself counts as
+    usage or affects any other endpoint's behavior.
+    """
+    return usage_quota.get_knowledge_outline_usage()
 
 
 @app.get("/api/queue/{video_id}/transcript/download")

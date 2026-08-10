@@ -741,7 +741,50 @@ Human Review 決定調整 Feature 003 Scope（不建立 Feature 004）：移除 
 
 AC6（Step 5）與 Regression Test G（Step 1-11）已全數由使用者於瀏覽器實際操作完成 Human Test，結果全部 PASS。至此 Feature 003（Revised Scope）Revised Scope Acceptance Criteria（AC1、AC3-AC6）與完整迴歸測試皆已完成，Feature 003 Human Test 階段結束。
 
-**尚未進行：** Regression Test G 其餘步驟（Queue 新增／手動觸發／刪除／匯出,History,Download,Export)待逐項執行。
+---
+
+## Feature 004 — 30秒快速學習 Usage Quota Foundation（Non-Blocking Usage Counter）✅ Completed
+
+純 Measurement、不做 Enforcement 的使用次數計數基礎建設：新增 `app/observability/usage_quota.py`，只在 30秒快速學習（Knowledge Outline）真正 cache miss 且 Gemini 呼叫成功後才將本機安裝（`instance_id`，非登入帳號）的累計次數 +1；cache hit、Gemini 失敗、Transcript、Study Note 皆不計數；計數為 lifetime、不因日期或 Server restart 重置；無論次數多少一律不攔截呼叫。新增唯讀 `GET /api/usage/knowledge-outline`，本次不接前端。未修改 Feature 003 已完成的產品流程與輸出格式。詳細 Proposal（Final Scope／Out of Scope／Data Model／AC／Edge Case／Implementation Plan）見對話記錄。
+
+**Self Test（已完成，隔離暫存目錄執行，未觸碰真實 `outputs/reports/`）：** 首次成功 → 檔案自動建立、`instance_id` 產生、count=1；第二次成功 → count=2、`instance_id` 不變；連續模擬到 count=11 → 全程無例外、無阻擋；模擬重啟（重新讀取）→ 數值與 `instance_id` 皆維持不變；磁碟 JSON 結構正確。
+
+**Human Test（進行中，逐項記錄）：**
+
+- **Step 1（重啟 Server + 確認乾淨基準狀態)**：Server 重新啟動無錯誤,`GET /api/usage/knowledge-outline` 回傳 200 OK,`instance_id: null`、`knowledge_outline_lifetime_count: 0`、`last_updated: null`,確認真實 `outputs/reports/usage_quota.json` 測試起點為乾淨狀態（尚未建立) — PASS
+- **Step 2（首支影片，真正 cache miss，count 0 → 1、instance_id 建立)**：對從未產生過 Knowledge Outline 的影片點擊「30秒快速學習」,內容正常成功產生,`GET /api/usage/knowledge-outline` 顯示 `instance_id` 由 `null` 建立為一組 UUID、`knowledge_outline_lifetime_count` 由 0 變為 1、`last_updated` 產生對應時間戳,確認首次真正 cache miss ＋ Gemini 成功後 lifetime counter 正確 0 → 1 — PASS
+- **Step 3（同一支影片重複觸發／cache hit，驗證計數不變)**：對 Step 2 同一支影片再次觸發「30秒快速學習」,內容正常顯示（走既有 cache-first 路徑),`knowledge_outline_lifetime_count` 維持 1（未增加),`instance_id` 不變,`last_updated` 不變；額外驗證：另外觸發該影片的 Study Note 產生後,`knowledge_outline_lifetime_count` 依然維持 1,確認 cache hit 與 Study Note 皆不計入 30秒快速學習計數器 — PASS
+- **Step 4（第二支新影片，真正 cache miss，驗證計數持續累加、instance_id 跨影片共用)**：對另一支從未觸發過的影片點擊「30秒快速學習」,內容正常成功產生,`instance_id` 與 Step 2/3 完全相同（跨影片共用同一個本機安裝身分),`knowledge_outline_lifetime_count` 由 1 變為 2,`last_updated` 更新為本次操作時間 — PASS
+- **Step 5（Server Restart 後計數保留)**：後端 Server 完全關閉再重新啟動,`instance_id` 與 `knowledge_outline_lifetime_count`（=2）與重啟前完全相同,`last_updated` 維持 Step 4 時間戳未被重啟本身更動,確認 lifetime counter 不因 Server restart 重置 — PASS
+- **Step 6（輕量迴歸檢查：Queue／Export／History／Console)**：Queue 既有卡片正常顯示,單支「下載知識包」ZIP 正常下載,History 頁面正常列出項目,DevTools Console 全程（Step 1-6）無新增 JavaScript 錯誤,確認本次改動未影響既有功能 — PASS
+
+**Test Date:** 2026-08-10　**Test Result（Step 1-6，全數 PASS）：** Feature 004 Human Test 完成。
+
+### Feature 004 — 最終驗收彙整
+
+**Acceptance Criteria 最終狀態：**
+
+| AC | 內容 | 狀態 | 驗證方式 |
+|----|------|------|----------|
+| AC1 | `instance_id` 首次建立、重啟不變 | ✅ PASS | Human Test（Step 2、Step 5） |
+| AC2 | 計數為 lifetime，不因日期／重啟重置 | ✅ PASS | Human Test（Step 5：重啟保留）；跨日重置未實際跨日測試，但 `usage_quota.json` 架構上與 `daily_report.json` 完全獨立、不含任何日期比對邏輯（程式碼審查確認） |
+| AC3 | cache miss + Gemini 成功 → +1 | ✅ PASS | Human Test（Step 2、Step 4） |
+| AC4 | cache hit → 不計數 | ✅ PASS | Human Test（Step 3） |
+| AC5 | Gemini 呼叫失敗 → 不計數 | ⚠️ 未透過 Human Test 驗證 | 未人為模擬真實 Gemini 失敗（避免不必要的破壞性操作）；經程式碼審查確認：`record_knowledge_outline_success()` 呼叫點位於 `try/except` 之後，例外會在到達此行前就以 `HTTPException` 中斷，結構上不可能在失敗時計數 |
+| AC6 | 唯讀 API 本身不影響計數、不影響其他功能 | ✅ PASS | Human Test（Step 1、3、5、6 皆多次呼叫該 API 讀取，計數僅在實際觸發時變動） |
+| AC7 | 無論次數多少（含 >10）一律不攔截 | ⚠️ 未在真實環境測試 count>10 | 依你指示，避免為測試燒 10 次以上真實 Gemini 額度；改以隔離環境 Self Test 模擬到 count=11 驗證計數模組本身無上限；另程式碼審查確認 `POST .../knowledge-outline` 端點完全沒有讀取計數值做判斷的邏輯，結構上不可能因次數而攔截 |
+| AC8 | 計數寫入失敗不中斷主流程 | ⚠️ 未測試 | 重用 Sprint 8.5A 既有 `logger.update_json_file()` 的 best-effort 例外吞掉邏輯（已在既有 Observability 模組驗證過），本次未針對新模組重新測試此邊界情況 |
+| AC9 | Transcript／Study Note／Queue／History／Export／既有 Observability 不受影響 | ✅ PASS | Human Test（Step 3：Study Note 不影響計數；Step 6：Queue／History／Export 迴歸） |
+
+**本次實際修改檔案：**
+- 新增 `app/observability/usage_quota.py`
+- 修改 `app/main.py`（import 新增 `usage_quota`；`POST /api/queue/{video_id}/knowledge-outline` 插入計數呼叫；新增 `GET /api/usage/knowledge-outline`）
+
+**Human Test 結果：** Step 1-6 全數 PASS（見上表）。
+
+**已知問題（皆非本次 Scope，記錄於 `TODO.md` Product Backlog，未修復）：**
+1. **Bug Candidate — Queue Card UI 狀態與實際 Study Note 完成狀態不同步（Stale Processing State）：** Feature 004 Human Test Step 5 期間觀察到一次，Study Note 實際已完成但卡片停留在「Generating Study Note」，手動重新整理後恢復正常。單次觀察、未 RCA、未修復，待下次穩定重現時再開獨立 Bug Fix Task。
+2. **Queue 卡片數量調查（非 Bug）：** Human Test 過程中對 Queue 98 筆／100 上限提出疑慮，Read-Only 調查確認程式碼與文件皆為 100 筆上限（非誤傳的 50 筆），98 筆在上限之內，機制正常，不記錄為 Bug。
 
 ---
 
