@@ -1,0 +1,11 @@
+# Minimal Zeabur/Nixpacks build config — Beta deployment only.
+# Adds the one missing system dependency (ffmpeg, needed by yt-dlp) on top
+# of the auto-detected Python provider, and pins the start command to the
+# existing local entry point (run.py) so PORT/host binding logic is reused
+# as-is rather than re-specified here.
+
+[phases.setup]
+nixPkgs = ["...", "ffmpeg"]
+
+[start]
+cmd = "python run.py"
