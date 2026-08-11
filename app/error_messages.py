@@ -10,6 +10,13 @@ _NETWORK_ISSUE = "網路連線發生問題，請檢查網路狀態後再試一�
 _SERVICE_UNAVAILABLE = "AI 處理服務目前無法使用或過於忙碌，請稍後再試（可能是 Gemini API 額度已用完）。"
 _SERVICE_UNAVAILABLE_LEARNING_BLUEPRINT = "Learning Blueprint 服務目前無法使用或過於忙碌，請稍後再試（可能是 Gemini API 額度已用完）。"
 _SERVICE_UNAVAILABLE_SOURCE = "服務目前無法使用或過於忙碌，請稍後再試。"
+# Feature: subtitle 429 + Whisper fallback failure user-facing message
+# strengthening (Scope Freeze). Used only by the one already-isolated
+# collision branch in main.py's TranscriptionError handler (subtitle fetch
+# classified as _SERVICE_UNAVAILABLE_SOURCE AND Whisper fallback classified
+# as _NO_TRANSCRIPT) — not wired into classify_error()'s own branching, so
+# every other call site/keyword/stage combination is unaffected.
+_SUBTITLE_TEMPORARILY_UNAVAILABLE = "YouTube 字幕目前暫時無法取得，請稍後再試。"
 _CONTENT_FILTERED = "Gemini 判定這段逐字稿內容不適合產生 Study Note（可能觸發安全過濾），請嘗試其他影片。"
 _UNKNOWN = "處理過程發生未預期的問題，請重試。"
 

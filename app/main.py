@@ -396,7 +396,11 @@ def _do_generate_transcript_for_item(video_id: str) -> dict:
             # own generic "no transcript" result — but only in that exact
             # collision, so every other failure combination (a non-rate-limit
             # subtitle failure, or a Whisper failure that's already specific)
-            # is completely unchanged.
+            # is completely unchanged. The message shown in that collision is
+            # the subtitle-specific wording (not the generic
+            # _SERVICE_UNAVAILABLE_SOURCE text also used by other stages/call
+            # sites) so the user sees a concrete, actionable YouTube-subtitle
+            # cause instead of a generic "service unavailable".
             final_message = whisper_message
             if subtitle_fetch_error_text is not None:
                 subtitle_message = error_messages.classify_error(subtitle_fetch_error_text, stage="transcript")
@@ -404,7 +408,7 @@ def _do_generate_transcript_for_item(video_id: str) -> dict:
                     subtitle_message == error_messages._SERVICE_UNAVAILABLE_SOURCE
                     and whisper_message == error_messages._NO_TRANSCRIPT
                 ):
-                    final_message = subtitle_message
+                    final_message = error_messages._SUBTITLE_TEMPORARILY_UNAVAILABLE
 
             queue_store.update_item(
                 video_id,
