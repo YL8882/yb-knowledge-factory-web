@@ -385,6 +385,35 @@ Engineering Rules（Task 1 核准時一併確認，全 Task 適用）：Backward
 
 ---
 
+## External Beta Deployment — Task T1 — Beta Token Authentication Foundation ✅ Completed
+
+依 T1 Proposal 規劃（Closed Beta，5–10 位受邀測試者，無登入／帳號／資料庫）。本 Task 只解決「這次請求是誰」（`tester_id`）的辨識問題，不涉及 `queue_store`／`history_store`／`usage_quota` 等既有儲存路徑，也尚未接入任何既有 Route（接入為 T3 待辦）。
+
+- [x] 新增 `app/beta_auth.py`：`_parse_beta_tokens()`（解析 `BETA_TOKENS` 環境變數，逗號分隔，每項為 `token` 或 `token:nickname`）、`is_beta_mode_enabled()`、`get_tester_id()`（FastAPI dependency，解析順序：本機模式 bypass → 合法 Cookie → 合法 `?beta=` query param（並建立／更新 Cookie）→ 403）
+- [x] `app/main.py` 新增獨立診斷端點 `GET /api/beta/whoami`（`Depends(beta_auth.get_tester_id)`），尚未接入任何既有功能路由
+
+**Root Cause Diagnosis（2026-08-12，Read-Only）：** 前一日 Human Test Scenario 2 Step 2 一度 FAIL（設定 `BETA_TOKENS` 後仍回傳 `local`）。經比對程式碼（`_parse_beta_tokens()` 為 request-time 讀取 `os.environ`，非 import-time 快取）與 Uvicorn `reload=True` 於 Windows 上的子行程機制（`multiprocessing` spawn 對應 Windows `CreateProcess` 預設完整繼承父行程環境變數）確認兩者皆非程式碼缺陷；判定為前一日 PowerShell 操作／環境變數設定問題，非 production code defect。經全新 PowerShell 視窗重新設定並驗證後，該 Step 已 PASS。
+
+**Self Test：** PASS
+
+**Human Test Scenario 1 — Local Backward Compatibility：** PASS（未設定 `BETA_TOKENS` 時，`get_tester_id()` 一律回傳 `local`，不檢查 Cookie／Query Param，不可能觸發 403）
+
+**Human Test Scenario 2（設定 `BETA_TOKENS = "demoTokenA:Tester1,demoTokenB:Tester2"`）：**
+
+| Step | 對應 AC | 驗證內容 | 結果 |
+|---|---|---|---|
+| Step 1 | — | 設定 `BETA_TOKENS` 並重新啟動 Server | PASS |
+| Step 2 | AC4 前置 | 不帶 Token 訪問 `/api/beta/whoami` → `403 Invalid or missing beta token` | PASS |
+| Step 3 | AC3 | 合法 `?beta=demoTokenA` → `200`，回傳正確 `tester_id`，並設定 Cookie（HttpOnly／Secure／SameSite=Lax） | PASS |
+| Step 4 | AC4 | 不合法 `?beta=wrongToken` → `403`，且不設定 Cookie（以全新無痕視窗測試，避開既有合法 Cookie） | PASS |
+| Step 5 | AC5 | 已有合法 Cookie 時，不帶 `?beta=` 仍回傳相同 `tester_id` | PASS |
+| Step 6 | AC6（前半） | 將 `demoTokenA` 自 `BETA_TOKENS` 移除並重啟 Server 後，原持有 `demoTokenA` Cookie 的請求 → `403` | PASS |
+| Step 7 | AC6（後半） | 同一瀏覽器改帶合法 `?beta=demoTokenB` → `200`，回傳正確 `tester_id`，Cookie 更新 | PASS |
+
+**T1（Beta Token Authentication Foundation）Scenario 1、Scenario 2（Step 1–7，AC3–AC6）全數 PASS。** 僅新增 `app/beta_auth.py`、`app/main.py` 新增一個獨立診斷端點，未修改／未接入任何既有 Route（Queue／History／Usage Quota 等）、未修改 UI。T3（既有 Route 接入）尚未開始，不在本次範圍內。
+
+---
+
 ## Acceptance
 
 - [ ] Complete end-to-end workflow
@@ -451,3 +480,11 @@ Future versions only.
   - **Workaround：** 重新整理頁面（Refresh）。
   - **Suggested Fix Direction（未實作，待排入修復時再確認最小修正範圍）：** 讓 `startStudyNote()` 觸發後也啟動與 `pollPipelineProgress(videoId)` 相同的輪詢；或頁面載入時對所有非終端狀態（`Transcript Ready`／`Generating` 等）項目一併恢復輪詢。
   - **Status：尚未實機穩定重現、尚未修復。** 觸發條件：等下次真實重現、或決定排入 Sprint 修復時，再依上方 Suggested Fix Direction 展開 Proposal 與 Human Test 驗收，不在沒有真實重現前直接修改程式。
+- [ ] **Product Inspiration — YouTube In-Page Learning Panel**（2026-08-11 記錄，純產品洞察，未評估、未規劃、未開發）：
+
+  - **Reference Product：** YT Transcript Generator——可直接在 YouTube 影片頁面右側顯示 Extension Panel，使用者不需離開 YouTube 即可操作 Transcript 功能。
+  - **OwnLearn 未來構想：** 將目前的 Quick Capture Chrome Extension，未來升級為 YouTube In-Page Learning Panel。使用者觀看 YouTube 時，Extension 自動取得目前 Video URL／Video ID，直接在 YouTube 頁面側邊提供：Transcript／30秒快速學習／Study Note／Workflow 操作步驟／下載學習包。
+  - **Product Value：** 核心不是模仿 Transcript Extension，而是把 OwnLearn 的完整學習流程帶進 YouTube——YouTube → Capture → Transcript → 30秒快速理解 → Study Note → Workflow → Learning Package，讓使用者盡量不需要離開 YouTube 即可完成快速學習。
+  - **Priority：Future / Post External Beta。現階段不開發。** 目前優先順序仍是：Local MVP → External Beta Deployment → Beta Validation → 再評估 YouTube In-Page Learning Panel。
+  - **Architecture Note：** 未來 External Beta Backend 部署完成後，Chrome Extension 不再呼叫 localhost API，改為呼叫 OwnLearn Cloud API，屆時再評估是否將結果直接渲染於 YouTube 頁面（與 Deployment Readiness Audit，2026-08-11 記錄的 Extension `127.0.0.1:8000` 硬編碼問題屬同一條演進路徑，但本項是更後面的獨立階段，不併入 Deployment Sprint）。
+  - **Guardrail：** 不納入目前 Deployment Sprint、不修改 Extension、不修改 Backend、不建立 Proposal、不加入目前 Acceptance Criteria。

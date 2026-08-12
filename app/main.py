@@ -7,13 +7,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
+import beta_auth
 import error_messages
 import gemini_client
 import history_store
@@ -45,6 +46,15 @@ app.add_middleware(
 static_dir = Path(__file__).parent / "static"
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+
+# Beta Token Authentication Foundation (T1): isolated diagnostic endpoint
+# only — not wired into any existing route yet (that's T3). Lets the whole
+# get_tester_id() flow (local-mode bypass / cookie / ?beta= / 403) be
+# exercised independently of Queue, History, or Usage.
+@app.get("/api/beta/whoami")
+async def beta_whoami(tester_id: str = Depends(beta_auth.get_tester_id)):
+    return {"tester_id": tester_id}
 
 
 class AddVideoRequest(BaseModel):
