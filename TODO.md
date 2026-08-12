@@ -412,6 +412,47 @@ Engineering Rules（Task 1 核准時一併確認，全 Task 適用）：Backward
 
 **T1（Beta Token Authentication Foundation）Scenario 1、Scenario 2（Step 1–7，AC3–AC6）全數 PASS。** 僅新增 `app/beta_auth.py`、`app/main.py` 新增一個獨立診斷端點，未修改／未接入任何既有 Route（Queue／History／Usage Quota 等）、未修改 UI。T3（既有 Route 接入）尚未開始，不在本次範圍內。
 
+### T2 — Beta Session Foundation
+
+**Status：CANCELLED / NOT REQUIRED**
+
+**Decision：** T1 `get_tester_id()` 已經是完整、可重用的 FastAPI dependency，T3 可以直接透過 `Depends(beta_auth.get_tester_id)` 取得 `tester_id`。建立額外 Session／Context abstraction 沒有增加目前所需能力，因此依 Keep It Simple／Avoid Over-engineering 原則取消 T2。編號保留（不重新編號 T3），以保留既有文件與程式碼歷史語意。
+
+### T3 — Existing Route Authentication Integration ✅ Completed
+
+**Goal：** 只做 Authentication Gating——將 T1 的 `Depends(beta_auth.get_tester_id)` 接入需要保護的既有 Route，不涉及資料隔離（資料隔離為獨立的 T4）。
+
+**Scope（實作後核實）：** `app/main.py` 中既有的 **19** 個 API Route（Queue／History／Usage／Transcript／Study Note／Knowledge Outline／Download／Export）＋ `GET /`（作為 `?beta=` Cookie bootstrap 入口）＋ `GET /history`，共 **21** 個既有 Route 加上 `Depends(beta_auth.get_tester_id)`；加上 T1 既有的 `GET /api/beta/whoami`，**合併後總共 22 個受保護 Route**（先前 Spec 階段誤寫「20 個 API Route」，經 `inspect.signature` 逐一程式內省核實更正為 19）。
+
+**Out of Scope：** `queue_store.py`／`history_store.py`／`app/observability/usage_quota.py` 的資料模型或函式簽名（皆未修改，`git diff` 為空）、per-tester 資料隔離（見下方 T4）。
+
+**Acceptance Criteria — 全數 PASS：**
+
+| AC | 內容 | 結果 |
+|---|---|---|
+| AC1 | 未設定 `BETA_TOKENS` 時，本機既有流程保持完全相容 | ✅ PASS |
+| AC2 | Beta Mode 開啟後，沒有合法 token 的受保護 Route 回傳 403 | ✅ PASS |
+| AC3 | 合法 Beta Tester token 可以正常使用受保護 Route | ✅ PASS |
+| AC4 | 原有 Queue → Transcript → Study Note → Knowledge Outline → Download／Export → History 流程沒有 Regression | ✅ PASS |
+| AC5 | T3 不宣稱已完成 per-tester data isolation | ✅ PASS（`queue_store.py`／`history_store.py`／`usage_quota.py` 皆無變更；不同合法 token 目前仍共用同一份 Queue／History／Usage 資料，留給 T4 處理） |
+
+**Automated Verification：** `httpx.AsyncClient` + `ASGITransport` in-process 測試，22 個受保護 Route × 4 情境（Local Mode／No Token／Invalid Token／Valid Token）＝ 88 項斷言全數 PASS，且測試後確認未留下任何測試殘留資料。
+
+**Human Verification（Beta Mode，`demoTokenA`／`demoTokenB`）：** Scenario 2 Step 1-7（對應 AC2、AC3）逐步以真實瀏覽器驗證，全數 PASS——設定 `BETA_TOKENS` 並重啟、無 Token 訪問 403、合法 `?beta=` 建立 Cookie、非法 `?beta=` 403 且不設 Cookie、Cookie 複用、Token 移除後舊 Cookie 403、重新提供合法 Token 可恢復。
+
+**Human Verification（Local Mode，`BETA_TOKENS` 完全未設定）：** 停止舊 Server、確認 Port 8000 釋放、以純 Local Mode 重新啟動並確認無 stale process 後，完整跑一次真實流程並全數 PASS：首頁載入無 403 → 新影片（含 Playlist 長網址）加入 Queue → Transcript 自動完成並自動下載一次 → 手動產生 Study Note 並自動下載一次 → 30秒快速學習正常顯示且未觸發重複下載 → 📦 下載知識包 ZIP 正確且未觸發額外自動下載 → History 頁面／開啟 Transcript／開啟 Study Note 皆正常且未觸發自動下載。
+
+**過程記錄：** T3 Human Test 期間發現一個與 T3 Authentication 無關的既有 Bug——`app/static/script.js` 的自動下載邏輯在 fresh session 載入大量既有 Completed Queue 項目時會觸發大量重複下載（BUG-01），經 RCA 確認與 T3 無因果關係後，以獨立 Task 修正並驗收，已獨立 commit（`5449f14`），不算入 T3 Scope。
+
+### T4 — Per-Tester Data Isolation
+
+**Status：Backlog，尚未設計、尚未實作**
+
+- **Goal：** 讓不同 Beta Tester 的 Queue／History／Usage Quota／Transcript／Study Note／Export 等資料存取依 `tester_id` 隔離，使 Tester A 無法看見或下載 Tester B 的資料，Usage 額度也不互相共用。
+- **依賴：** 需先完成 T3（Authentication Gating），隔離邏輯才有可信任的 `tester_id` 來源。
+- **已知影響範圍（T3 Implementation Readiness Review，2026-08-12 確認，非新增判斷）：** `queue_store.py`、`history_store.py`、`app/observability/usage_quota.py` 三個模組目前皆為單一全域共享狀態（無 `tester_id` 欄位），需要重新設計資料結構與讀寫函式簽名才能支援 per-tester 分流。
+- **本次不展開：** Scope／Files Expected to Change／Acceptance Criteria／Verification Plan，待正式進入 T4 規劃階段再定義。
+
 ---
 
 ## Acceptance
@@ -480,6 +521,12 @@ Future versions only.
   - **Workaround：** 重新整理頁面（Refresh）。
   - **Suggested Fix Direction（未實作，待排入修復時再確認最小修正範圍）：** 讓 `startStudyNote()` 觸發後也啟動與 `pollPipelineProgress(videoId)` 相同的輪詢；或頁面載入時對所有非終端狀態（`Transcript Ready`／`Generating` 等）項目一併恢復輪詢。
   - **Status：尚未實機穩定重現、尚未修復。** 觸發條件：等下次真實重現、或決定排入 Sprint 修復時，再依上方 Suggested Fix Direction 展開 Proposal 與 Human Test 驗收，不在沒有真實重現前直接修改程式。
+- [ ] **BUG-02 / Investigation — Railway Production：YouTube Metadata / `POST /api/queue` 400**（2026-08-12 記錄，僅記錄已知證據，尚未診斷、尚未修復，與 T3 Beta Auth、BUG-01 Duplicate Download 為各自獨立問題）：
+
+  - **已知證據 1（Local Mode 已實測 PASS）：** 使用含 `&list=...&index=...` 的 YouTube Playlist 長網址（`https://www.youtube.com/watch?v=fB4uipaYYeU&list=PLKrHjFg4YYFmcrZ_7vjkaN31Ax3U_42Rg&index=23`）在本機 Local Mode 完整走過一次：加入 Queue PASS、Transcript PASS、Transcript 自動下載一次 PASS、Study Note PASS、Study Note 自動下載一次 PASS。**因此目前沒有證據顯示 `&list=`／`&index=` 或 Playlist 長網址本身是問題**，不要把這個 Bug 歸類成「Long URL Bug」。
+  - **已知證據 2（Railway Production 曾出現失敗）：** Railway Production 曾用同一支影片的 Playlist 長網址（`https://www.youtube.com/watch?v=JXDQglxJczE&list=PLKrHjFg4YYFmcrZ_7vjkaN31Ax3U_42Rg&index=10`）與乾淨網址（`https://www.youtube.com/watch?v=JXDQglxJczE`）皆出現 `POST /api/queue → 400 Bad Request`，UI 顯示「無法取得影片資訊」。
+  - **下次調查方向：** Local PASS → Railway FAIL → 比較 production／local 的 metadata flow → `fetch_video_metadata()` → YouTube oEmbed response → exception handling → `/api/queue` 400。
+  - **Status：僅記錄，未診斷、未修復、未測試、未 commit。** 下次開始時依上方調查方向展開 Read-Only RCA，不在沒有真實 Railway 環境重現資訊前直接修改程式。
 - [ ] **Product Inspiration — YouTube In-Page Learning Panel**（2026-08-11 記錄，純產品洞察，未評估、未規劃、未開發）：
 
   - **Reference Product：** YT Transcript Generator——可直接在 YouTube 影片頁面右側顯示 Extension Panel，使用者不需離開 YouTube 即可操作 Transcript 功能。

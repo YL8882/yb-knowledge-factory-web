@@ -66,19 +66,19 @@ class CaptureRequest(BaseModel):
 
 
 @app.get("/", response_class=HTMLResponse)
-async def home():
+async def home(tester_id: str = Depends(beta_auth.get_tester_id)):
     html_path = Path(__file__).parent / "templates" / "index.html"
     return html_path.read_text(encoding="utf-8")
 
 
 @app.get("/history", response_class=HTMLResponse)
-async def history_page():
+async def history_page(tester_id: str = Depends(beta_auth.get_tester_id)):
     html_path = Path(__file__).parent / "templates" / "history.html"
     return html_path.read_text(encoding="utf-8")
 
 
 @app.get("/api/queue")
-async def get_queue():
+async def get_queue(tester_id: str = Depends(beta_auth.get_tester_id)):
     """Queue list — items augmented (Sprint 5, Task 5) with derived
     transcript_exists / study_note_exists flags, same pattern as
     GET /api/history (Task 3), so the Queue page can gate the "download
@@ -97,7 +97,7 @@ async def get_queue():
 
 
 @app.get("/api/history")
-async def get_history():
+async def get_history(tester_id: str = Depends(beta_auth.get_tester_id)):
     """Knowledge Library (Sprint 5, Task 3): augments each history_store entry
     with derived (not stored) transcript_exists / study_note_exists flags, so
     the History page can show per-video status without history_store.py
@@ -116,7 +116,7 @@ async def get_history():
 
 
 @app.post("/api/capture")
-async def capture_video(request: CaptureRequest):
+async def capture_video(request: CaptureRequest, tester_id: str = Depends(beta_auth.get_tester_id)):
     """Used by the Chrome extension's "YB Learn" button. Validates the URL
     only — deliberately does not touch queue_store, history_store, or the
     transcript/study-note pipeline; that wiring is a later sprint's job.
@@ -129,7 +129,7 @@ async def capture_video(request: CaptureRequest):
 
 
 @app.post("/api/queue")
-async def add_to_queue(request: AddVideoRequest):
+async def add_to_queue(request: AddVideoRequest, tester_id: str = Depends(beta_auth.get_tester_id)):
     try:
         video_id = youtube.extract_video_id(request.url)
     except youtube.InvalidYouTubeURLError:
@@ -166,7 +166,7 @@ async def add_to_queue(request: AddVideoRequest):
 
 
 @app.delete("/api/queue/{video_id}")
-async def remove_from_queue(video_id: str):
+async def remove_from_queue(video_id: str, tester_id: str = Depends(beta_auth.get_tester_id)):
     try:
         queue_store.remove_item(video_id)
     except queue_store.QueueItemNotFoundError:
@@ -809,7 +809,7 @@ async def _resume_pending_queue_items() -> None:
 
 
 @app.post("/api/queue/{video_id}/start")
-async def start_processing(video_id: str):
+async def start_processing(video_id: str, tester_id: str = Depends(beta_auth.get_tester_id)):
     """Manual fallback for an item that isn't already moving through the pipeline
     (e.g. it errored out earlier without being retried, or the in-memory queue was
     lost some other way). Normally items start automatically on add.
@@ -824,7 +824,7 @@ async def start_processing(video_id: str):
 
 
 @app.post("/api/queue/{video_id}/retry")
-async def retry_processing(video_id: str):
+async def retry_processing(video_id: str, tester_id: str = Depends(beta_auth.get_tester_id)):
     """Recovery action for a failed item — resumes from wherever it actually left
     off (Transcript from scratch, or just Study Note if Transcript already
     succeeded), using the video's already-known URL, so the user never has to
@@ -846,7 +846,7 @@ async def retry_processing(video_id: str):
 
 
 @app.post("/api/queue/{video_id}/transcript")
-def generate_transcript(video_id: str):
+def generate_transcript(video_id: str, tester_id: str = Depends(beta_auth.get_tester_id)):
     """Single Execution Path (方案 A): submits through the same
     _pipeline_queue / single worker thread as every other job instead of
     calling _generate_transcript_for_item() directly — the actual work and
@@ -868,7 +868,7 @@ def generate_transcript(video_id: str):
 
 
 @app.post("/api/queue/{video_id}/study-note")
-def generate_study_note(video_id: str):
+def generate_study_note(video_id: str, tester_id: str = Depends(beta_auth.get_tester_id)):
     """Single Execution Path (方案 A): submits through the same
     _pipeline_queue / single worker thread as every other job instead of
     calling _generate_study_note_for_item() directly — the actual work and
@@ -891,7 +891,7 @@ def generate_study_note(video_id: str):
 
 
 @app.post("/api/queue/{video_id}/knowledge-outline")
-async def generate_knowledge_outline(video_id: str):
+async def generate_knowledge_outline(video_id: str, tester_id: str = Depends(beta_auth.get_tester_id)):
     """Rapid Learning Engine (Sprint 7, Task 1): manual "🧠 開始快速學習"
     trigger for One Sentence + Knowledge Outline. Deliberately NOT routed
     through _pipeline_queue / the single worker thread (unlike /transcript
@@ -966,7 +966,7 @@ async def generate_knowledge_outline(video_id: str):
 
 
 @app.get("/api/usage/knowledge-outline")
-async def get_knowledge_outline_usage():
+async def get_knowledge_outline_usage(tester_id: str = Depends(beta_auth.get_tester_id)):
     """Feature 004 — Usage Quota Foundation: read-only lifetime usage
     snapshot for 30秒快速學習 (Knowledge Outline). Informational only — not
     yet wired into any UI, and calling this endpoint never itself counts as
@@ -976,7 +976,7 @@ async def get_knowledge_outline_usage():
 
 
 @app.get("/api/queue/{video_id}/transcript/download")
-async def download_transcript(video_id: str):
+async def download_transcript(video_id: str, tester_id: str = Depends(beta_auth.get_tester_id)):
     try:
         item = queue_store.get_item(video_id)
     except queue_store.QueueItemNotFoundError:
@@ -1001,7 +1001,7 @@ async def download_transcript(video_id: str):
 
 
 @app.get("/api/queue/{video_id}/study-note/download")
-async def download_study_note(video_id: str):
+async def download_study_note(video_id: str, tester_id: str = Depends(beta_auth.get_tester_id)):
     try:
         item = queue_store.get_item(video_id)
     except queue_store.QueueItemNotFoundError:
@@ -1026,7 +1026,7 @@ async def download_study_note(video_id: str):
 
 
 @app.get("/api/queue/{video_id}/export")
-async def export_package(video_id: str):
+async def export_package(video_id: str, tester_id: str = Depends(beta_auth.get_tester_id)):
     """Knowledge Package Export (Sprint 5, Task 1): zips the already-generated
     Transcript.md + Study_Note.md into one `<Video Title>/` package. Export
     Layer only — reads existing output files, does not touch the Transcript /
@@ -1063,7 +1063,7 @@ async def export_package(video_id: str):
 
 
 @app.get("/api/queue/export-all")
-async def export_all_packages():
+async def export_all_packages(tester_id: str = Depends(beta_auth.get_tester_id)):
     """Bulk Knowledge Package Export (Sprint 5, Task 2; disk-verification
     parity added in Task 5): packages every Queue item whose Transcript.md
     and Study_Note.md both still exist on disk into one zip, one
@@ -1113,7 +1113,7 @@ async def export_all_packages():
 
 
 @app.get("/api/history/{video_id}/export")
-async def export_history_package(video_id: str):
+async def export_history_package(video_id: str, tester_id: str = Depends(beta_auth.get_tester_id)):
     """Knowledge Library (Sprint 5, Task 3): single-video Knowledge Package
     download from the History page — video_id may no longer be in
     queue_store at all (e.g. removed from the Queue to free up space), so
@@ -1151,7 +1151,7 @@ async def export_history_package(video_id: str):
 
 
 @app.get("/api/history/export-all")
-async def export_all_history_packages():
+async def export_all_history_packages(tester_id: str = Depends(beta_auth.get_tester_id)):
     """History Bulk Export (Sprint 5, Task 4): packages every History entry
     whose Transcript.md and Study_Note.md both still exist on disk into one
     zip, one `<Video Title>_<video_id>/` folder per video. Unlike
@@ -1199,7 +1199,7 @@ async def export_all_history_packages():
 
 
 @app.get("/api/history/{video_id}/transcript", response_class=PlainTextResponse)
-async def view_history_transcript(video_id: str):
+async def view_history_transcript(video_id: str, tester_id: str = Depends(beta_auth.get_tester_id)):
     """Knowledge Library (Sprint 5, Task 3): "開啟 Transcript" — returns the
     raw content with no Content-Disposition header, so the browser displays
     it in a new tab instead of forcing a download (unlike the existing Queue
@@ -1212,7 +1212,7 @@ async def view_history_transcript(video_id: str):
 
 
 @app.get("/api/history/{video_id}/study-note", response_class=PlainTextResponse)
-async def view_history_study_note(video_id: str):
+async def view_history_study_note(video_id: str, tester_id: str = Depends(beta_auth.get_tester_id)):
     """Knowledge Library (Sprint 5, Task 3): "開啟 Study Note" — same reasoning
     as view_history_transcript() above.
     """
