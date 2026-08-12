@@ -63,11 +63,15 @@ document.addEventListener('DOMContentLoaded', function() {
     // straight into it once permission is confirmed, instead of prompting on every download.
     let downloadDirHandle = null;
 
-    // Tracks which video_ids have already been auto-saved this session, so renderQueue()
-    // (which re-runs on every poll tick) triggers the actual file write exactly once per
-    // item instead of re-saving on every re-render.
-    const autoSavedTranscripts = new Set();
-    const autoSavedStudyNotes = new Set();
+    // Shared one-time auto-download guard, keyed by `${videoId}:${outputType}`
+    // (outputType is 'transcript' or 'study_note'). pollPipelineProgress() (the
+    // auto pipeline / retry) and startStudyNote() (the manual trigger) are two
+    // independent completion paths that can each observe the same item finish —
+    // both check/mark this same Set before calling autoDownload(), so whichever
+    // one notices first "wins" and the other skips. In-memory only, per page
+    // session (not persisted, not localStorage) and never read/written by
+    // renderQueue(), which stays render-only.
+    const autoDownloadedOnce = new Set();
 
     const FOLDER_DB_NAME = 'ybkf-settings';
     const FOLDER_STORE_NAME = 'handles';
@@ -266,11 +270,56 @@ document.addEventListener('DOMContentLoaded', function() {
     // The backend auto-runs the whole Transcript -> Study Note pipeline as a single
     // background task right after a video is added — this just keeps the queue
     // polling/re-rendering live until that specific item reaches a terminal state.
-    function pollPipelineProgress(videoId) {
+    //
+    // Also owns "auto-download the moment each file is ready" (BUG-01 fix: moved
+    // out of renderQueue(), which must stay render-only and must never itself
+    // cause a download — page load/refresh/fresh-session renders of an already-
+    // completed item must never re-trigger a file save). `baseline` records what
+    // already existed *before* this particular processing run started (undefined
+    // for a brand-new item from addToQueue; the caller-supplied known state for a
+    // retry), so only a genuine absent -> present transition observed *during*
+    // this run ever triggers a download — never a file that was already there
+    // when this run began (e.g. Transcript.md on a Study-Note-only retry).
+    //
+    // BUG-01 follow-up: this interval keeps running (see isPipelineActive() above)
+    // for as long as an item sits at "Transcript Ready" waiting for the user to
+    // manually trigger Study Note — so it can still be alive and polling at the
+    // exact moment startStudyNote() also completes and downloads. Both paths now
+    // check/mark the shared autoDownloadedOnce guard (not a local variable here),
+    // so whichever one notices the completion first is the only one that
+    // actually downloads.
+    function pollPipelineProgress(videoId, baseline) {
+        if (baseline && baseline.hasTranscript) {
+            autoDownloadedOnce.add(videoId + ':transcript');
+        }
+        if (baseline && baseline.hasStudyNote) {
+            autoDownloadedOnce.add(videoId + ':study_note');
+        }
+
         const timer = setInterval(async function() {
             const items = await loadQueue();
             const item = items.find(function(i) { return i.video_id === videoId; });
-            if (!item || !isPipelineActive(item)) {
+            if (!item) {
+                clearInterval(timer);
+                return;
+            }
+
+            if (item.transcript_path && !autoDownloadedOnce.has(videoId + ':transcript')) {
+                autoDownloadedOnce.add(videoId + ':transcript');
+                autoDownload(
+                    '/api/queue/' + encodeURIComponent(videoId) + '/transcript/download',
+                    'TN_' + item.title + '_' + item.video_id + '.md'
+                );
+            }
+            if (item.study_note_path && !autoDownloadedOnce.has(videoId + ':study_note')) {
+                autoDownloadedOnce.add(videoId + ':study_note');
+                autoDownload(
+                    '/api/queue/' + encodeURIComponent(videoId) + '/study-note/download',
+                    'SN_' + item.title + '_' + item.video_id + '.md'
+                );
+            }
+
+            if (!isPipelineActive(item)) {
                 clearInterval(timer);
             }
         }, 1500);
@@ -292,6 +341,19 @@ document.addEventListener('DOMContentLoaded', function() {
     // using the video's already-known URL. No need to paste it again.
     async function retryProcessing(videoId) {
         try {
+            // BUG-01: captured *before* the retry POST (not after) so a
+            // Study-Note-only retry's baseline reflects "Transcript already
+            // there" even if the background worker finishes fast enough to
+            // beat the post-POST loadQueue() below — otherwise Transcript.md
+            // could be wrongly treated as a fresh absent -> present transition
+            // and re-downloaded even though this retry never touched it.
+            const beforeItems = await loadQueue();
+            const beforeItem = beforeItems.find(function(i) { return i.video_id === videoId; });
+            const baseline = {
+                hasTranscript: Boolean(beforeItem && beforeItem.transcript_path),
+                hasStudyNote: Boolean(beforeItem && beforeItem.study_note_path),
+            };
+
             const response = await fetch('/api/queue/' + encodeURIComponent(videoId) + '/retry', {
                 method: 'POST',
             });
@@ -301,7 +363,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             showStatus('正在重試...', 'info');
             await loadQueue();
-            pollPipelineProgress(videoId);
+            pollPipelineProgress(videoId, baseline);
         } catch (error) {
             showStatus('網路連線失敗', 'error');
         }
@@ -742,27 +804,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
             queueList.appendChild(li);
 
-            // Unconditional auto-download the moment each file is ready — no button,
-            // no click. autoSavedTranscripts/autoSavedStudyNotes make sure this only
-            // actually fires once per item per session, even though renderQueue()
-            // re-runs on every poll tick while other items are still processing.
-            if (hasTranscript && !autoSavedTranscripts.has(item.video_id)) {
-                autoSavedTranscripts.add(item.video_id);
-                const transcriptDownloadUrl = '/api/queue/' + encodeURIComponent(item.video_id) + '/transcript/download';
-                const transcriptFilename = 'TN_' + item.title + '_' + item.video_id + '.md';
-                autoDownload(transcriptDownloadUrl, transcriptFilename).then(function(ok) {
-                    if (!ok) autoSavedTranscripts.delete(item.video_id);
-                });
-            }
-
-            if (hasStudyNote && !autoSavedStudyNotes.has(item.video_id)) {
-                autoSavedStudyNotes.add(item.video_id);
-                const studyNoteDownloadUrl = '/api/queue/' + encodeURIComponent(item.video_id) + '/study-note/download';
-                const studyNoteFilename = 'SN_' + item.title + '_' + item.video_id + '.md';
-                autoDownload(studyNoteDownloadUrl, studyNoteFilename).then(function(ok) {
-                    if (!ok) autoSavedStudyNotes.delete(item.video_id);
-                });
-            }
+            // BUG-01: renderQueue() is render-only — it must never itself trigger a
+            // download (a fresh page load, refresh, or new incognito session that
+            // re-renders an already-completed item must not re-save its files).
+            // Auto-download now lives on the actual completion transition instead:
+            // pollPipelineProgress() (for the auto-pipeline / retry) and
+            // startStudyNote() (for the manual trigger) — see those functions.
         });
     }
 
@@ -822,8 +869,12 @@ document.addEventListener('DOMContentLoaded', function() {
     // startLearningBlueprint()'s shape but hits the pre-existing
     // /study-note endpoint (previously only reachable via the automatic
     // pipeline). No client-side content cache needed: Study Note isn't
-    // rendered inline, only downloaded, so a successful loadQueue() picking
-    // up the new study_note_path/status from the backend is enough.
+    // rendered inline, only downloaded.
+    //
+    // BUG-01: this POST's own success response *is* the completion event, so
+    // the download is triggered directly here rather than waiting for the
+    // next loadQueue()/renderQueue() pass to notice study_note_path appeared
+    // (renderQueue() is render-only and must never trigger a download itself).
     async function startStudyNote(videoId, button) {
         if (studyNoteFetchInFlight.has(videoId)) {
             return;
@@ -845,6 +896,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             await loadQueue();
+            // BUG-01 follow-up: pollPipelineProgress() may still be actively
+            // polling this same videoId (it keeps running while status sits at
+            // "Transcript Ready" — see its comment) and could notice this same
+            // completion within the next tick. Checking/marking the shared
+            // autoDownloadedOnce guard here ensures only one of the two paths
+            // actually downloads.
+            if (!autoDownloadedOnce.has(videoId + ':study_note')) {
+                autoDownloadedOnce.add(videoId + ':study_note');
+                autoDownload(
+                    '/api/queue/' + encodeURIComponent(videoId) + '/study-note/download',
+                    'SN_' + videoId + '.md'
+                );
+            }
         } catch (error) {
             showStatus('網路連線失敗', 'error');
             showInlineError(button, '網路連線失敗');
@@ -1075,7 +1139,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // download button at the same file. Guarded by displayedStudyNoteVideoId so it
     // only fetches once per item, even though renderProcessingPanel() re-runs on
     // every poll tick. The file is already auto-downloaded separately (see
-    // autoDownload() in renderQueue) — this is just for on-page display.
+    // pollPipelineProgress()/startStudyNote(), BUG-01) — this is just for on-page
+    // display.
     //
     // Workspace previews Study Note only — Transcript is an intermediate
     // product, still auto-downloaded as Transcript.md but not shown.
