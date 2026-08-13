@@ -137,7 +137,8 @@ async def add_to_queue(request: AddVideoRequest, tester_id: str = Depends(beta_a
 
     try:
         metadata = youtube.fetch_video_metadata(video_id)
-    except youtube.VideoMetadataError:
+    except youtube.VideoMetadataError as exc:
+        print(f"[BUG-02] fetch_video_metadata failed for video_id={video_id}: {exc}", flush=True)
         raise HTTPException(status_code=400, detail="無法取得影片資訊")
 
     try:
