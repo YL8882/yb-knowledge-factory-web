@@ -521,12 +521,13 @@ Future versions only.
   - **Workaround：** 重新整理頁面（Refresh）。
   - **Suggested Fix Direction（未實作，待排入修復時再確認最小修正範圍）：** 讓 `startStudyNote()` 觸發後也啟動與 `pollPipelineProgress(videoId)` 相同的輪詢；或頁面載入時對所有非終端狀態（`Transcript Ready`／`Generating` 等）項目一併恢復輪詢。
   - **Status：尚未實機穩定重現、尚未修復。** 觸發條件：等下次真實重現、或決定排入 Sprint 修復時，再依上方 Suggested Fix Direction 展開 Proposal 與 Human Test 驗收，不在沒有真實重現前直接修改程式。
-- [ ] **BUG-02 / Investigation — Railway Production：YouTube Metadata / `POST /api/queue` 400**（2026-08-12 記錄，僅記錄已知證據，尚未診斷、尚未修復，與 T3 Beta Auth、BUG-01 Duplicate Download 為各自獨立問題）：
+- [ ] **BUG-02 / Investigation — Railway Production：YouTube Metadata / `POST /api/queue` 400**（2026-08-12 記錄，2026-08-13 完成 Read-Only RCA 與診斷 log 部署，狀態改為 Intermittent / Monitoring，與 T3 Beta Auth、BUG-01 Duplicate Download 為各自獨立問題）：
 
   - **已知證據 1（Local Mode 已實測 PASS）：** 使用含 `&list=...&index=...` 的 YouTube Playlist 長網址（`https://www.youtube.com/watch?v=fB4uipaYYeU&list=PLKrHjFg4YYFmcrZ_7vjkaN31Ax3U_42Rg&index=23`）在本機 Local Mode 完整走過一次：加入 Queue PASS、Transcript PASS、Transcript 自動下載一次 PASS、Study Note PASS、Study Note 自動下載一次 PASS。**因此目前沒有證據顯示 `&list=`／`&index=` 或 Playlist 長網址本身是問題**，不要把這個 Bug 歸類成「Long URL Bug」。
   - **已知證據 2（Railway Production 曾出現失敗）：** Railway Production 曾用同一支影片的 Playlist 長網址（`https://www.youtube.com/watch?v=JXDQglxJczE&list=PLKrHjFg4YYFmcrZ_7vjkaN31Ax3U_42Rg&index=10`）與乾淨網址（`https://www.youtube.com/watch?v=JXDQglxJczE`）皆出現 `POST /api/queue → 400 Bad Request`，UI 顯示「無法取得影片資訊」。
-  - **下次調查方向：** Local PASS → Railway FAIL → 比較 production／local 的 metadata flow → `fetch_video_metadata()` → YouTube oEmbed response → exception handling → `/api/queue` 400。
-  - **Status：僅記錄，未診斷、未修復、未測試、未 commit。** 下次開始時依上方調查方向展開 Read-Only RCA，不在沒有真實 Railway 環境重現資訊前直接修改程式。
+  - **已知證據 3（Railway Production 之後改為 PASS）：** 同一支影片 `JXDQglxJczE` 之後在 Railway Production 重測，metadata 標題正確載入（「I Made 100 Youtube Shorts with Claude Code in 5 minutes」）、加入 Queue 成功、Transcript 完成、Transcript.md 自動下載成功。**目前無法再重現先前的 400 失敗**，且期間未對 metadata 抓取邏輯、yt-dlp 或 requirements.txt 做任何修改，僅新增了診斷 log（見下）。原始 Railway 失敗當下的真實 exception 訊息目前仍未取得。
+  - **Status：Intermittent / Monitoring。** `app/main.py` 的 `add_to_queue()` 已於 commit `1d0c2b3` 加入 `[BUG-02]` 診斷 print（`except youtube.VideoMetadataError as exc:` 分支），會在下次失敗重現時記錄原始例外訊息至 Railway Deploy Logs，目前保持啟用中以利未來重現時採證。
+  - **Decision：** 在失敗重現且診斷 log 取得真正 Root Cause 之前，不進行任何程式修復（不修改 `fetch_video_metadata()`、不改 yt-dlp、不改 requirements.txt）。
 - [ ] **Product Inspiration — YouTube In-Page Learning Panel**（2026-08-11 記錄，純產品洞察，未評估、未規劃、未開發）：
 
   - **Reference Product：** YT Transcript Generator——可直接在 YouTube 影片頁面右側顯示 Extension Panel，使用者不需離開 YouTube 即可操作 Transcript 功能。
