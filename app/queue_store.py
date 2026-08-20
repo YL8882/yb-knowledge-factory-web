@@ -7,6 +7,8 @@ MAX_QUEUE_SIZE = 100
 
 QUEUE_FILE = Path(__file__).parent.parent / "outputs" / "queue.json"
 
+LOCAL_TESTER_ID = "local"
+
 
 class QueueFullError(Exception):
     pass
@@ -20,21 +22,26 @@ class QueueItemNotFoundError(Exception):
     pass
 
 
-def _write_queue_file(items: list[dict]) -> None:
+def _write_queue_file(data: dict[str, list[dict]]) -> None:
     try:
         QUEUE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        QUEUE_FILE.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+        QUEUE_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     except OSError:
         pass
 
 
-def _load_queue() -> list[dict]:
+def _load_queue() -> dict[str, list[dict]]:
     if not QUEUE_FILE.exists():
-        return []
+        return {}
     try:
-        items = json.loads(QUEUE_FILE.read_text(encoding="utf-8"))
+        raw = json.loads(QUEUE_FILE.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
-        return []
+        return {}
+
+    # T4.1: data predating per-tester isolation is a flat list. It was all
+    # written before Beta Testers existed, so it belongs entirely to Local
+    # Mode (tester_id "local") — never surfaced to an authenticated tester.
+    data = {LOCAL_TESTER_ID: raw} if isinstance(raw, list) else raw
 
     # Recover items left frozen mid-"Transcribing"/"Generating" by a server restart
     # that killed the background task doing the work — otherwise nothing will ever
@@ -42,32 +49,35 @@ def _load_queue() -> list[dict]:
     # Reset to the last known-good, retryable state (same states the live error
     # handlers already fall back to when a request fails outright).
     changed = False
-    for item in items:
-        if item.get("status") in ("Downloading", "Transcribing"):
-            item["status"] = "Queued"
-            changed = True
-        elif item.get("status") == "Generating":
-            item["status"] = "Transcript Ready"
-            changed = True
+    for tester_items in data.values():
+        for item in tester_items:
+            if item.get("status") in ("Downloading", "Transcribing"):
+                item["status"] = "Queued"
+                changed = True
+            elif item.get("status") == "Generating":
+                item["status"] = "Transcript Ready"
+                changed = True
 
     if changed:
-        _write_queue_file(items)
+        _write_queue_file(data)
 
-    return items
+    return data
 
 
 def _save_queue() -> None:
     _write_queue_file(_queue)
 
 
-_queue: list[dict] = _load_queue()
+_queue: dict[str, list[dict]] = _load_queue()
 
 
-def add_item(video_id: str, title: str, url: str) -> dict:
-    if any(item["video_id"] == video_id for item in _queue):
+def add_item(tester_id: str, video_id: str, title: str, url: str) -> dict:
+    tester_items = _queue.setdefault(tester_id, [])
+
+    if any(item["video_id"] == video_id for item in tester_items):
         raise DuplicateVideoError(f"Video already in queue: {video_id}")
 
-    if len(_queue) >= MAX_QUEUE_SIZE:
+    if len(tester_items) >= MAX_QUEUE_SIZE:
         raise QueueFullError("Queue is full")
 
     item = {
@@ -83,33 +93,34 @@ def add_item(video_id: str, title: str, url: str) -> dict:
         # after the item is removed from this (ephemeral) queue.
         "request_id": str(uuid.uuid4()),
     }
-    _queue.append(item)
+    tester_items.append(item)
     _save_queue()
     return item
 
 
-def list_items() -> list[dict]:
-    return sorted(_queue, key=lambda item: item["created_at"], reverse=True)
+def list_items(tester_id: str) -> list[dict]:
+    return sorted(_queue.get(tester_id, []), key=lambda item: item["created_at"], reverse=True)
 
 
-def get_item(video_id: str) -> dict:
-    for item in _queue:
+def get_item(tester_id: str, video_id: str) -> dict:
+    for item in _queue.get(tester_id, []):
         if item["video_id"] == video_id:
             return item
     raise QueueItemNotFoundError(f"Item not found in queue: {video_id}")
 
 
-def update_item(video_id: str, **fields) -> dict:
-    item = get_item(video_id)
+def update_item(tester_id: str, video_id: str, **fields) -> dict:
+    item = get_item(tester_id, video_id)
     item.update(fields)
     _save_queue()
     return item
 
 
-def remove_item(video_id: str) -> None:
-    for i, item in enumerate(_queue):
+def remove_item(tester_id: str, video_id: str) -> None:
+    tester_items = _queue.get(tester_id, [])
+    for i, item in enumerate(tester_items):
         if item["video_id"] == video_id:
-            del _queue[i]
+            del tester_items[i]
             _save_queue()
             return
     raise QueueItemNotFoundError(f"Item not found in queue: {video_id}")

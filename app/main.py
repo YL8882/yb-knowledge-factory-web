@@ -87,7 +87,7 @@ async def get_queue(tester_id: str = Depends(beta_auth.get_tester_id)):
     a read-time augmentation only, identical in shape to get_history() above.
     """
     items = []
-    for item in queue_store.list_items():
+    for item in queue_store.list_items(tester_id):
         items.append({
             **item,
             "transcript_exists": transcript_service.find_cached_transcript(item["video_id"]) is not None,
@@ -106,7 +106,7 @@ async def get_history(tester_id: str = Depends(beta_auth.get_tester_id)):
     objects held in its live in-memory list.
     """
     items = []
-    for entry in history_store.list_entries():
+    for entry in history_store.list_entries(tester_id):
         items.append({
             **entry,
             "transcript_exists": transcript_service.find_cached_transcript(entry["video_id"]) is not None,
@@ -143,6 +143,7 @@ async def add_to_queue(request: AddVideoRequest, tester_id: str = Depends(beta_a
 
     try:
         item = queue_store.add_item(
+            tester_id=tester_id,
             video_id=video_id,
             title=metadata["title"],
             url=request.url.strip(),
@@ -156,20 +157,20 @@ async def add_to_queue(request: AddVideoRequest, tester_id: str = Depends(beta_a
     # to the YB channel after the user deletes it from the Queue to free up space.
     # request_id mirrored from the Queue item (Sprint 8.5A Correlation ID).
     history_store.add_entry(
-        video_id=video_id, title=metadata["title"], url=request.url.strip(),
+        tester_id=tester_id, video_id=video_id, title=metadata["title"], url=request.url.strip(),
         request_id=item.get("request_id"),
     )
 
     # Auto-start: added items join the single sequential pipeline queue immediately
     # (see _enqueue_for_processing below) instead of waiting for a manual click.
-    _enqueue_for_processing(video_id, kind="full")
+    _enqueue_for_processing(tester_id, video_id, kind="full")
     return item
 
 
 @app.delete("/api/queue/{video_id}")
 async def remove_from_queue(video_id: str, tester_id: str = Depends(beta_auth.get_tester_id)):
     try:
-        queue_store.remove_item(video_id)
+        queue_store.remove_item(tester_id, video_id)
     except queue_store.QueueItemNotFoundError:
         raise HTTPException(status_code=404, detail="項目不存在")
     return {"status": "removed"}
@@ -199,18 +200,18 @@ def _stage_rank(status: str) -> int:
     return _STAGE_RANK.get(status, 0)
 
 
-def _generate_transcript_for_item(video_id: str) -> dict:
+def _generate_transcript_for_item(tester_id: str, video_id: str) -> dict:
     """Runtime Intelligence wrapper (Sprint 8.5A Task 1): times the whole
     Transcript stage (including an idempotent Stage-Guard repeat call, which
     still counts as a real "transcript" event, just a near-zero-duration one)
     and logs it via runtime_metrics — the actual pipeline logic is unchanged,
     just moved into _do_generate_transcript_for_item() below.
     """
-    item = queue_store.get_item(video_id)
+    item = queue_store.get_item(tester_id, video_id)
     request_id = item.get("request_id")
     stage_start = datetime.now(timezone.utc)
     try:
-        result = _do_generate_transcript_for_item(video_id)
+        result = _do_generate_transcript_for_item(tester_id, video_id)
     except Exception:
         runtime_metrics.log_stage(
             request_id=request_id, video_id=video_id, stage="transcript",
@@ -224,8 +225,8 @@ def _generate_transcript_for_item(video_id: str) -> dict:
     return result
 
 
-def _do_generate_transcript_for_item(video_id: str) -> dict:
-    item = queue_store.get_item(video_id)
+def _do_generate_transcript_for_item(tester_id: str, video_id: str) -> dict:
+    item = queue_store.get_item(tester_id, video_id)
 
     # Stage Guard: Transcript already reached or passed — return the existing
     # result instead of re-running the pipeline. Regeneration is intentionally
@@ -302,7 +303,7 @@ def _do_generate_transcript_for_item(video_id: str) -> dict:
                     artifact_type="study_note", hit=True,
                 )
 
-            queue_store.update_item(video_id, **fields)
+            queue_store.update_item(tester_id, video_id, **fields)
 
             return {
                 "video_id": video_id,
@@ -341,6 +342,7 @@ def _do_generate_transcript_for_item(video_id: str) -> dict:
         )
 
         queue_store.update_item(
+            tester_id,
             video_id,
             status="Transcript Ready",
             transcript_path=str(output_path),
@@ -365,12 +367,13 @@ def _do_generate_transcript_for_item(video_id: str) -> dict:
     # of the two stages it happened in — so the frontend's processing panel can
     # honestly show which stage is active, and which stage failed, without guessing.
     queue_store.update_item(
-        video_id, status="Downloading", last_error="", last_error_stage="",
+        tester_id, video_id, status="Downloading", last_error="", last_error_stage="",
         progress_percent=None, eta_seconds=None,
     )
 
     def _report_progress(fraction: float, eta_seconds: float | None) -> None:
         queue_store.update_item(
+            tester_id,
             video_id,
             progress_percent=round(fraction * 100),
             eta_seconds=round(eta_seconds) if eta_seconds is not None else None,
@@ -382,6 +385,7 @@ def _do_generate_transcript_for_item(video_id: str) -> dict:
             audio_path = transcript_service.download_audio(video_id, tmp_dir, on_progress=_report_progress)
         except transcript_service.AudioDownloadError as exc:
             queue_store.update_item(
+                tester_id,
                 video_id,
                 status="Queued",
                 last_error=error_messages.classify_error(str(exc), stage="download"),
@@ -395,7 +399,7 @@ def _do_generate_transcript_for_item(video_id: str) -> dict:
             )
             raise TranscriptGenerationError(str(exc)) from exc
 
-        queue_store.update_item(video_id, status="Transcribing", progress_percent=None, eta_seconds=None)
+        queue_store.update_item(tester_id, video_id, status="Transcribing", progress_percent=None, eta_seconds=None)
 
         try:
             text = transcript_service.transcribe_audio(audio_path, on_progress=_report_progress)
@@ -422,6 +426,7 @@ def _do_generate_transcript_for_item(video_id: str) -> dict:
                     final_message = error_messages._SUBTITLE_TEMPORARILY_UNAVAILABLE
 
             queue_store.update_item(
+                tester_id,
                 video_id,
                 status="Queued",
                 last_error=final_message,
@@ -447,6 +452,7 @@ def _do_generate_transcript_for_item(video_id: str) -> dict:
     )
 
     queue_store.update_item(
+        tester_id,
         video_id,
         status="Transcript Ready",
         transcript_path=str(output_path),
@@ -468,7 +474,7 @@ class StudyNoteGenerationError(Exception):
     pass
 
 
-def _generate_study_note_for_item(video_id: str) -> dict:
+def _generate_study_note_for_item(tester_id: str, video_id: str) -> dict:
     """Workflow Recovery: thin wrapper around _do_generate_study_note()
     guaranteeing that ANY exception — not just the ones _do_generate_study_note()
     already anticipates — gets recorded on the item before it propagates. Without
@@ -481,7 +487,7 @@ def _generate_study_note_for_item(video_id: str) -> dict:
     (Sprint 8.5A Task 1) — same request_id as the Transcript stage that
     preceded it, since both are read from the same queue_store item.
     """
-    item = queue_store.get_item(video_id)
+    item = queue_store.get_item(tester_id, video_id)
     request_id = item.get("request_id")
     stage_start = datetime.now(timezone.utc)
 
@@ -492,7 +498,7 @@ def _generate_study_note_for_item(video_id: str) -> dict:
         )
 
     try:
-        result = _do_generate_study_note(video_id)
+        result = _do_generate_study_note(tester_id, video_id)
     except StudyNoteGenerationError:
         _log("error")
         raise
@@ -502,6 +508,7 @@ def _generate_study_note_for_item(video_id: str) -> dict:
         # the real exception type/message as-is rather than running it through
         # error_messages.classify_error(), so the true cause stays visible.
         queue_store.update_item(
+            tester_id,
             video_id,
             status="Transcript Ready",
             last_error="未預期錯誤（" + type(exc).__name__ + "）：" + str(exc),
@@ -517,8 +524,8 @@ def _generate_study_note_for_item(video_id: str) -> dict:
     return result
 
 
-def _do_generate_study_note(video_id: str) -> dict:
-    item = queue_store.get_item(video_id)
+def _do_generate_study_note(tester_id: str, video_id: str) -> dict:
+    item = queue_store.get_item(tester_id, video_id)
 
     # Stage Guard: Study Note already reached — return the existing result
     # instead of re-running the pipeline. Regeneration is intentionally out of
@@ -535,7 +542,7 @@ def _do_generate_study_note(video_id: str) -> dict:
     transcript_path = item.get("transcript_path")
     if not transcript_path:
         queue_store.update_item(
-            video_id, last_error="請先產生 Transcript", last_error_stage="studynote"
+            tester_id, video_id, last_error="請先產生 Transcript", last_error_stage="studynote"
         )
         raise StudyNoteGenerationError("請先產生 Transcript")
 
@@ -543,7 +550,7 @@ def _do_generate_study_note(video_id: str) -> dict:
         transcript_content = study_note.read_transcript(transcript_path)
     except study_note.TranscriptNotFoundError as exc:
         queue_store.update_item(
-            video_id, last_error="Transcript 檔案不存在", last_error_stage="studynote"
+            tester_id, video_id, last_error="Transcript 檔案不存在", last_error_stage="studynote"
         )
         raise StudyNoteGenerationError("Transcript 檔案不存在") from exc
 
@@ -568,6 +575,7 @@ def _do_generate_study_note(video_id: str) -> dict:
         if cached_study_note_path:
             cached_body = cached_study_note_path.read_text(encoding="utf-8")
             queue_store.update_item(
+                tester_id,
                 video_id,
                 status="Study Note Ready",
                 study_note_path=str(cached_study_note_path),
@@ -582,7 +590,7 @@ def _do_generate_study_note(video_id: str) -> dict:
                 "file_path": str(cached_study_note_path),
             }
 
-    queue_store.update_item(video_id, status="Generating", last_error="", last_error_stage="")
+    queue_store.update_item(tester_id, video_id, status="Generating", last_error="", last_error_stage="")
 
     try:
         body = gemini_client.generate_study_note(
@@ -591,6 +599,7 @@ def _do_generate_study_note(video_id: str) -> dict:
         )
     except gemini_client.GeminiConfigError as exc:
         queue_store.update_item(
+            tester_id,
             video_id,
             status="Transcript Ready",
             last_error=error_messages.classify_error(str(exc), stage="studynote"),
@@ -599,6 +608,7 @@ def _do_generate_study_note(video_id: str) -> dict:
         raise StudyNoteGenerationError(str(exc)) from exc
     except gemini_client.GeminiGenerationError as exc:
         queue_store.update_item(
+            tester_id,
             video_id,
             status="Transcript Ready",
             last_error=error_messages.classify_error(str(exc), stage="studynote"),
@@ -613,6 +623,7 @@ def _do_generate_study_note(video_id: str) -> dict:
     )
 
     queue_store.update_item(
+        tester_id,
         video_id,
         status="Study Note Ready",
         study_note_path=str(output_path),
@@ -627,7 +638,7 @@ def _do_generate_study_note(video_id: str) -> dict:
     }
 
 
-def _auto_generate_transcript(video_id: str) -> None:
+def _auto_generate_transcript(tester_id: str, video_id: str) -> None:
     """Background-task entry point used right after a video is added to the queue,
     and also by /retry for an item that failed before Transcript ever succeeded.
     Transcript-only (Feature 003): Study Note is no longer auto-chained after
@@ -640,18 +651,18 @@ def _auto_generate_transcript(video_id: str) -> None:
     failed and offer a Retry action.
     """
     try:
-        _generate_transcript_for_item(video_id)
+        _generate_transcript_for_item(tester_id, video_id)
     except TranscriptGenerationError:
         return
 
 
-def _retry_study_note_only(video_id: str) -> None:
+def _retry_study_note_only(tester_id: str, video_id: str) -> None:
     """Worker entry point for a queue item where Transcript already succeeded and
     only Study Note needs another attempt — skips re-downloading/re-transcribing
     entirely rather than routing back through the full pipeline.
     """
     try:
-        _generate_study_note_for_item(video_id)
+        _generate_study_note_for_item(tester_id, video_id)
     except StudyNoteGenerationError:
         pass
 
@@ -663,7 +674,7 @@ def _retry_study_note_only(video_id: str) -> None:
 # off several concurrent background tasks (FastAPI's BackgroundTasks run on the
 # thread pool, not serialized), which would contend over the single Whisper model
 # instance and violate the single-user/non-concurrent design.
-_pipeline_queue: "pyqueue.Queue[tuple[str, str, datetime]]" = pyqueue.Queue()
+_pipeline_queue: "pyqueue.Queue[tuple[str, str, str, datetime]]" = pyqueue.Queue()
 _worker_started = False
 _worker_start_lock = threading.Lock()
 
@@ -675,29 +686,35 @@ _worker_start_lock = threading.Lock()
 # single-worker guarantee entirely. This is not a second lock: nothing here
 # guards concurrent execution — it only lets a caller wait for a result that
 # the one real worker thread produces.
-_job_events: dict[str, threading.Event] = {}
-_job_outcomes: dict[str, tuple[bool, object]] = {}
+#
+# T4.2 Task 1: keyed by (tester_id, video_id), not video_id alone — two
+# testers enqueuing the same video_id must never share an Event or overwrite
+# each other's outcome.
+_job_events: dict[tuple[str, str], threading.Event] = {}
+_job_outcomes: dict[tuple[str, str], tuple[bool, object]] = {}
 _job_registry_lock = threading.Lock()
 
 
-def _record_job_outcome(video_id: str, success: bool, payload: object) -> None:
+def _record_job_outcome(tester_id: str, video_id: str, success: bool, payload: object) -> None:
+    job_key = (tester_id, video_id)
     with _job_registry_lock:
-        event = _job_events.get(video_id)
+        event = _job_events.get(job_key)
         if event is not None:
-            _job_outcomes[video_id] = (success, payload)
+            _job_outcomes[job_key] = (success, payload)
             event.set()
 
 
-def _await_job(video_id: str, kind: str, timeout: float = 600.0):
+def _await_job(tester_id: str, video_id: str, kind: str, timeout: float = 600.0):
+    job_key = (tester_id, video_id)
     event = threading.Event()
     with _job_registry_lock:
-        _job_events[video_id] = event
-    _enqueue_for_processing(video_id, kind=kind)
+        _job_events[job_key] = event
+    _enqueue_for_processing(tester_id, video_id, kind=kind)
 
     finished = event.wait(timeout=timeout)
     with _job_registry_lock:
-        _job_events.pop(video_id, None)
-        success, payload = _job_outcomes.pop(video_id, (False, None))
+        _job_events.pop(job_key, None)
+        success, payload = _job_outcomes.pop(job_key, (False, None))
 
     if not finished:
         raise TimeoutError(f"處理逾時：{video_id} 未在 {timeout} 秒內完成")
@@ -708,7 +725,7 @@ def _await_job(video_id: str, kind: str, timeout: float = 600.0):
 
 def _pipeline_worker_loop() -> None:
     while True:
-        video_id, kind, enqueued_at = _pipeline_queue.get()
+        tester_id, video_id, kind, enqueued_at = _pipeline_queue.get()
 
         # Runtime Intelligence (Sprint 8.5A Task 1): "queue" stage — how long
         # this job actually waited on _pipeline_queue before a worker picked
@@ -716,7 +733,7 @@ def _pipeline_worker_loop() -> None:
         # enqueued and being picked up (e.g. user deleted it) is skipped
         # silently rather than failing the job.
         try:
-            _item = queue_store.get_item(video_id)
+            _item = queue_store.get_item(tester_id, video_id)
             runtime_metrics.log_stage(
                 request_id=_item.get("request_id"), video_id=video_id, stage="queue",
                 start_time=enqueued_at, end_time=datetime.now(timezone.utc), status="success",
@@ -726,7 +743,7 @@ def _pipeline_worker_loop() -> None:
 
         try:
             if kind == "study_note_only":
-                _retry_study_note_only(video_id)
+                _retry_study_note_only(tester_id, video_id)
             elif kind == "transcript_only_sync":
                 # Manual /transcript endpoint — same _generate_transcript_for_item()
                 # as before, just now only ever invoked from this one worker
@@ -736,22 +753,22 @@ def _pipeline_worker_loop() -> None:
                 # re-raised on the waiting side exactly as it would have been
                 # before this change.
                 try:
-                    result = _generate_transcript_for_item(video_id)
+                    result = _generate_transcript_for_item(tester_id, video_id)
                 except Exception as exc:
-                    _record_job_outcome(video_id, False, exc)
+                    _record_job_outcome(tester_id, video_id, False, exc)
                 else:
-                    _record_job_outcome(video_id, True, result)
+                    _record_job_outcome(tester_id, video_id, True, result)
             elif kind == "study_note_only_sync":
                 # Manual /study-note endpoint — same _generate_study_note_for_item()
                 # as before, same reasoning as transcript_only_sync above.
                 try:
-                    result = _generate_study_note_for_item(video_id)
+                    result = _generate_study_note_for_item(tester_id, video_id)
                 except Exception as exc:
-                    _record_job_outcome(video_id, False, exc)
+                    _record_job_outcome(tester_id, video_id, False, exc)
                 else:
-                    _record_job_outcome(video_id, True, result)
+                    _record_job_outcome(tester_id, video_id, True, result)
             else:
-                _auto_generate_transcript(video_id)
+                _auto_generate_transcript(tester_id, video_id)
         except Exception as exc:
             # Workflow Recovery: a single job's unexpected failure must never
             # kill this thread — without a top-level catch here, an uncaught
@@ -763,6 +780,7 @@ def _pipeline_worker_loop() -> None:
             error_stage = "study_note" if kind == "study_note_only" else "transcript"
             try:
                 queue_store.update_item(
+                    tester_id,
                     video_id,
                     last_error="Worker 發生未預期錯誤（" + type(exc).__name__ + "）：" + str(exc),
                     last_error_stage="studynote" if kind == "study_note_only" else "transcript",
@@ -771,7 +789,7 @@ def _pipeline_worker_loop() -> None:
                 pass
             try:
                 error_metrics.log_error(
-                    request_id=queue_store.get_item(video_id).get("request_id"),
+                    request_id=queue_store.get_item(tester_id, video_id).get("request_id"),
                     video_id=video_id, stage=error_stage,
                     exception=f"Worker: {type(exc).__name__}: {exc}",
                 )
@@ -781,13 +799,13 @@ def _pipeline_worker_loop() -> None:
             _pipeline_queue.task_done()
 
 
-def _enqueue_for_processing(video_id: str, kind: str = "full") -> None:
+def _enqueue_for_processing(tester_id: str, video_id: str, kind: str = "full") -> None:
     global _worker_started
     with _worker_start_lock:
         if not _worker_started:
             threading.Thread(target=_pipeline_worker_loop, daemon=True, name="ybkf-pipeline-worker").start()
             _worker_started = True
-    _pipeline_queue.put((video_id, kind, datetime.now(timezone.utc)))
+    _pipeline_queue.put((tester_id, video_id, kind, datetime.now(timezone.utc)))
 
 
 @app.on_event("startup")
@@ -799,14 +817,21 @@ async def _resume_pending_queue_items() -> None:
     deliberate user action (POST /retry), not something that should auto-loop on a
     video that's known to be broken (e.g. region-locked).
     """
-    items = sorted(queue_store.list_items(), key=lambda item: item["created_at"])
-    for item in items:
-        if item.get("last_error") or item.get("study_note_path"):
-            continue
-        if item.get("transcript_path"):
-            _enqueue_for_processing(item["video_id"], kind="study_note_only")
-        else:
-            _enqueue_for_processing(item["video_id"], kind="full")
+    # T4.1: no per-request tester_id exists at startup. queue_store now
+    # partitions items per tester with no "list every tester" API (adding
+    # one is out of this task's approved scope), so this walks its internal
+    # per-tester storage directly to resume EVERY tester's pending items, not
+    # just one. T4.2 Task 1: _tester_id from this loop is now propagated into
+    # _enqueue_for_processing() so a resumed job carries the correct owner.
+    for _tester_id, _tester_items in queue_store._queue.items():
+        items = sorted(_tester_items, key=lambda item: item["created_at"])
+        for item in items:
+            if item.get("last_error") or item.get("study_note_path"):
+                continue
+            if item.get("transcript_path"):
+                _enqueue_for_processing(_tester_id, item["video_id"], kind="study_note_only")
+            else:
+                _enqueue_for_processing(_tester_id, item["video_id"], kind="full")
 
 
 @app.post("/api/queue/{video_id}/start")
@@ -816,11 +841,11 @@ async def start_processing(video_id: str, tester_id: str = Depends(beta_auth.get
     lost some other way). Normally items start automatically on add.
     """
     try:
-        queue_store.get_item(video_id)
+        queue_store.get_item(tester_id, video_id)
     except queue_store.QueueItemNotFoundError:
         raise HTTPException(status_code=404, detail="項目不存在")
 
-    _enqueue_for_processing(video_id, kind="full")
+    _enqueue_for_processing(tester_id, video_id, kind="full")
     return {"status": "started"}
 
 
@@ -832,16 +857,16 @@ async def retry_processing(video_id: str, tester_id: str = Depends(beta_auth.get
     paste the YouTube URL again.
     """
     try:
-        item = queue_store.get_item(video_id)
+        item = queue_store.get_item(tester_id, video_id)
     except queue_store.QueueItemNotFoundError:
         raise HTTPException(status_code=404, detail="項目不存在")
 
-    queue_store.update_item(video_id, last_error="", last_error_stage="")
+    queue_store.update_item(tester_id, video_id, last_error="", last_error_stage="")
 
     if item.get("transcript_path") and not item.get("study_note_path"):
-        _enqueue_for_processing(video_id, kind="study_note_only")
+        _enqueue_for_processing(tester_id, video_id, kind="study_note_only")
     else:
-        _enqueue_for_processing(video_id, kind="full")
+        _enqueue_for_processing(tester_id, video_id, kind="full")
 
     return {"status": "retrying"}
 
@@ -854,17 +879,17 @@ def generate_transcript(video_id: str, tester_id: str = Depends(beta_auth.get_te
     error handling are unchanged, only how it's dispatched.
     """
     try:
-        queue_store.get_item(video_id)
+        queue_store.get_item(tester_id, video_id)
     except queue_store.QueueItemNotFoundError:
         raise HTTPException(status_code=404, detail="項目不存在")
 
     try:
-        return _await_job(video_id, kind="transcript_only_sync")
+        return _await_job(tester_id, video_id, kind="transcript_only_sync")
     except TranscriptGenerationError as exc:
         # _generate_transcript_for_item already recorded the correct stage
         # (download vs transcript) on the item before raising — reuse it instead
         # of re-guessing from the raw exception text here.
-        stage = queue_store.get_item(video_id).get("last_error_stage", "")
+        stage = queue_store.get_item(tester_id, video_id).get("last_error_stage", "")
         raise HTTPException(status_code=500, detail=error_messages.classify_error(str(exc), stage=stage))
 
 
@@ -876,12 +901,12 @@ def generate_study_note(video_id: str, tester_id: str = Depends(beta_auth.get_te
     error handling are unchanged, only how it's dispatched.
     """
     try:
-        queue_store.get_item(video_id)
+        queue_store.get_item(tester_id, video_id)
     except queue_store.QueueItemNotFoundError:
         raise HTTPException(status_code=404, detail="項目不存在")
 
     try:
-        return _await_job(video_id, kind="study_note_only_sync")
+        return _await_job(tester_id, video_id, kind="study_note_only_sync")
     except StudyNoteGenerationError as exc:
         detail = str(exc)
         if detail == "請先產生 Transcript":
@@ -903,7 +928,7 @@ async def generate_knowledge_outline(video_id: str, tester_id: str = Depends(bet
     — does not touch the Transcript / Study Note pipeline.
     """
     try:
-        item = queue_store.get_item(video_id)
+        item = queue_store.get_item(tester_id, video_id)
     except queue_store.QueueItemNotFoundError:
         raise HTTPException(status_code=404, detail="項目不存在")
 
@@ -949,7 +974,7 @@ async def generate_knowledge_outline(video_id: str, tester_id: str = Depends(bet
     # save below because the Gemini cost is already incurred at this point,
     # regardless of whether the subsequent local save succeeds. Measurement
     # only — never blocks or limits this call.
-    usage_quota.record_knowledge_outline_success()
+    usage_quota.record_knowledge_outline_success(tester_id)
 
     output_path = knowledge_outline.save_knowledge_outline(
         video_id=video_id, title=item["title"], body=body
@@ -957,7 +982,7 @@ async def generate_knowledge_outline(video_id: str, tester_id: str = Depends(bet
 
     # Additive field only — no `status` change, so this never interacts with
     # _stage_rank() / Stage Guard's forward-only state machine.
-    queue_store.update_item(video_id, knowledge_outline_path=str(output_path))
+    queue_store.update_item(tester_id, video_id, knowledge_outline_path=str(output_path))
 
     return {
         "video_id": video_id,
@@ -973,13 +998,13 @@ async def get_knowledge_outline_usage(tester_id: str = Depends(beta_auth.get_tes
     yet wired into any UI, and calling this endpoint never itself counts as
     usage or affects any other endpoint's behavior.
     """
-    return usage_quota.get_knowledge_outline_usage()
+    return usage_quota.get_knowledge_outline_usage(tester_id)
 
 
 @app.get("/api/queue/{video_id}/transcript/download")
 async def download_transcript(video_id: str, tester_id: str = Depends(beta_auth.get_tester_id)):
     try:
-        item = queue_store.get_item(video_id)
+        item = queue_store.get_item(tester_id, video_id)
     except queue_store.QueueItemNotFoundError:
         raise HTTPException(status_code=404, detail="項目不存在")
 
@@ -1004,7 +1029,7 @@ async def download_transcript(video_id: str, tester_id: str = Depends(beta_auth.
 @app.get("/api/queue/{video_id}/study-note/download")
 async def download_study_note(video_id: str, tester_id: str = Depends(beta_auth.get_tester_id)):
     try:
-        item = queue_store.get_item(video_id)
+        item = queue_store.get_item(tester_id, video_id)
     except queue_store.QueueItemNotFoundError:
         raise HTTPException(status_code=404, detail="項目不存在")
 
@@ -1034,7 +1059,7 @@ async def export_package(video_id: str, tester_id: str = Depends(beta_auth.get_t
     Study Note pipeline.
     """
     try:
-        item = queue_store.get_item(video_id)
+        item = queue_store.get_item(tester_id, video_id)
     except queue_store.QueueItemNotFoundError:
         raise HTTPException(status_code=404, detail="項目不存在")
 
@@ -1078,7 +1103,7 @@ async def export_all_packages(tester_id: str = Depends(beta_auth.get_tester_id))
     does not touch the Transcript / Study Note pipeline.
     """
     candidates = []
-    for item in queue_store.list_items():
+    for item in queue_store.list_items(tester_id):
         transcript_path = transcript_service.find_cached_transcript(item["video_id"])
         study_note_path = study_note.find_cached_study_note(item["video_id"])
         if transcript_path and study_note_path:
@@ -1124,7 +1149,7 @@ async def export_history_package(video_id: str, tester_id: str = Depends(beta_au
     Layer only — does not touch queue_store or history_store's write paths.
     """
     entry = next(
-        (e for e in history_store.list_entries() if e["video_id"] == video_id), None
+        (e for e in history_store.list_entries(tester_id) if e["video_id"] == video_id), None
     )
     if entry is None:
         raise HTTPException(status_code=404, detail="歷史紀錄中找不到這支影片")
@@ -1164,7 +1189,7 @@ async def export_all_history_packages(tester_id: str = Depends(beta_auth.get_tes
     history_store's write paths, or the Transcript / Study Note pipeline.
     """
     candidates = []
-    for entry in history_store.list_entries():
+    for entry in history_store.list_entries(tester_id):
         transcript_path = transcript_service.find_cached_transcript(entry["video_id"])
         study_note_path = study_note.find_cached_study_note(entry["video_id"])
         if transcript_path and study_note_path:
