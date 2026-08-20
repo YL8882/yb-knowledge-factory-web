@@ -444,14 +444,50 @@ Engineering Rules（Task 1 核准時一併確認，全 Task 適用）：Backward
 
 **過程記錄：** T3 Human Test 期間發現一個與 T3 Authentication 無關的既有 Bug——`app/static/script.js` 的自動下載邏輯在 fresh session 載入大量既有 Completed Queue 項目時會觸發大量重複下載（BUG-01），經 RCA 確認與 T3 無因果關係後，以獨立 Task 修正並驗收，已獨立 commit（`5449f14`），不算入 T3 Scope。
 
-### T4 — Per-Tester Data Isolation
+### T4.1 — Queue / History / Usage Quota Isolation + A-class Route Propagation ✅ Completed
 
-**Status：Backlog，尚未設計、尚未實作**
+**Goal：** 讓不同 Beta Tester 的 Queue／History／Usage Quota 資料存取依 `tester_id` 隔離，使 Tester A 無法看見或影響 Tester B 的資料，Usage 額度也不互相共用。**Scope 邊界：** Transcript／Study Note／Export 等 artifact 檔案本身的隔離不在本次範圍（見下方已知限制）。
 
-- **Goal：** 讓不同 Beta Tester 的 Queue／History／Usage Quota／Transcript／Study Note／Export 等資料存取依 `tester_id` 隔離，使 Tester A 無法看見或下載 Tester B 的資料，Usage 額度也不互相共用。
-- **依賴：** 需先完成 T3（Authentication Gating），隔離邏輯才有可信任的 `tester_id` 來源。
-- **已知影響範圍（T3 Implementation Readiness Review，2026-08-12 確認，非新增判斷）：** `queue_store.py`、`history_store.py`、`app/observability/usage_quota.py` 三個模組目前皆為單一全域共享狀態（無 `tester_id` 欄位），需要重新設計資料結構與讀寫函式簽名才能支援 per-tester 分流。
-- **本次不展開：** Scope／Files Expected to Change／Acceptance Criteria／Verification Plan，待正式進入 T4 規劃階段再定義。
+- [x] Task 1 — Queue Store Isolation：`queue_store.py` 內部狀態改為依 `tester_id` 分流（`add_item`／`get_item`／`update_item`／`remove_item`／`list_items`），同一 `video_id` 不同 tester 互不衝突，同一 tester 內仍正確擋重複
+- [x] Task 2 — History Store Isolation：`history_store.py` 同樣改為依 `tester_id` 分流（`add_entry`／`list_entries`），overwrite-on-repeat 僅影響該 tester 自己的紀錄
+- [x] Task 3 — Usage Quota Isolation：`app/observability/usage_quota.py` 的 30秒快速學習 lifetime 計數與 `instance_id` 改為依 `tester_id` 獨立，不互相繼承或消耗彼此額度
+- [x] Task 4 — A-class Route Propagation：`app/main.py` 既有 22 個受保護 Route（T3 範圍）呼叫上述三個模組時皆正確傳入 `tester_id`
+- [x] Task 5 — Closure / Automated Verification：完全隔離環境（scratch 檔案路徑，未觸碰真實 `outputs/*.json`）重新驗證 38/38 PASS，涵蓋 Queue／History／Usage Quota 隔離、Route 層 `tester_id` 傳遞、Local Mode 向下相容、舊格式資料遷移、無殘留舊簽名呼叫點；確認 commit `8a9a620` 內容正確
+
+僅修改 `app/queue_store.py`、`app/history_store.py`、`app/observability/usage_quota.py`、`app/main.py`。未修改 Workflow、Stage Guard、Single Worker 流程本身、Transcript／Study Note／Export 檔案產生邏輯、Chrome Extension。
+
+**已知限制（不阻擋本次 Closure，詳見 Product Backlog）：** Transcript／Study Note `.md` 產出檔案仍是 video_id-scoped 共享 artifact，尚未依 `tester_id` 隔離；Job 狀態層（Queue／Job Event／Job Outcome，見下方 T4.2 Task 1）已正確隔離，但底層檔案本身仍共用。
+
+**Test Date:** 2026-08-20　**Test Result:** PASS（詳見 `Acceptance_Test.md`）
+
+**Commit:** `8a9a620`
+
+---
+
+## T4.2 — Worker / Job Identity Migration
+
+延續 T4.1，將 Worker／Job 層（`_pipeline_queue`／`_job_events`／`_job_outcomes`）從原本以 `video_id` 為唯一鍵，改為以 `(tester_id, video_id)` 為鍵，讓不同 tester 同時處理同一支影片時不互相干擾。
+
+### Task 1 — Worker/Job Identity Migration ✅ Completed
+
+- [x] `_pipeline_queue` tuple 由 `(video_id, kind, enqueued_at)` 改為 `(tester_id, video_id, kind, enqueued_at)`
+- [x] `_job_events`／`_job_outcomes` key 由 `video_id` 改為 `(tester_id, video_id)`
+- [x] `_record_job_outcome`／`_await_job`／`_pipeline_worker_loop`／`_enqueue_for_processing` 與 6 個 pipeline 函式（`_generate_transcript_for_item`、`_do_generate_transcript_for_item`、`_generate_study_note_for_item`、`_do_generate_study_note`、`_auto_generate_transcript`、`_retry_study_note_only`）及其 Route 呼叫點（`add_to_queue`、`start_processing`、`retry_processing`、`generate_transcript`、`generate_study_note`、`_resume_pending_queue_items`）全數改為攜帶 `tester_id`
+- [x] 解決 **T4-BLOCKER-01**（worker-internal pipeline 原本仍用只認 `video_id` 的舊 `queue_store` 簽名，於 T4.1 Task 4 驗證時發現）：採 Option B（直接遷移至 `(tester_id, video_id)` job identity，不建立相容 bridge）
+
+僅修改 `app/main.py`。未修改 `queue_store.py`／`history_store.py`／`usage_quota.py`（T4.1 已完成部分不重複變更）。
+
+**Test Date:** 2026-08-19　**Test Result:** PASS（詳見 `Acceptance_Test.md`）
+
+**已知限制：** 雙 Tester、同一 `video_id` 的真實雙瀏覽器 Human Test 尚未執行（僅 automated concurrent 驗證），非本 Task 的 mandatory acceptance criterion，待後續排期。
+
+**Commit:** `8a9a620`
+
+### 尚未開始（Backlog）
+
+- [ ] T4.2 下一個 Task：範圍待規劃
+- [ ] 雙 Tester、同一 `video_id` 的真實雙瀏覽器 Human Test：待排期
+- [ ] Artifact 檔案（Transcript／Study Note `.md`）per-tester 隔離：目前仍是 video_id-scoped 共享 artifact，未依 `tester_id` 隔離，屬獨立範圍，不併入 T4.1／T4.2 Task 1
 
 ---
 

@@ -788,6 +788,56 @@ AC6（Step 5）與 Regression Test G（Step 1-11）已全數由使用者於瀏�
 
 ---
 
+## External Beta Deployment — T4.1 / T4.2 Task 1
+
+依 `TODO.md`「External Beta Deployment」章節 T4（Per-Tester Data Isolation）規劃，本節記錄 T4.1（Queue／History／Usage Quota Isolation + A-class Route Propagation，Task 1-5）與 T4.2 Task 1（Worker/Job Identity Migration）的正式驗收結果。**Commit：`8a9a620`。**
+
+**Automated Verification（2026-08-20）：** 於完全隔離環境重新執行，共 **38/38 PASS**（scratch 檔案路徑，未 import 觸發 `@app.on_event("startup")`，未呼叫任何 yt-dlp／Whisper／Gemini，測試前後以 SHA-256 確認真實 `outputs/queue.json`／`outputs/history.json`／`outputs/reports/usage_quota.json` 三個檔案完全未被寫入）。其中 33 項對應 T4.1（Queue／History／Usage Quota CRUD 隔離、22 個受保護 Route 中 9 個代表性 Route 直接呼叫真實 route coroutine 驗證、Local Mode 向下相容、舊格式資料遷移、真實 outputs 零污染），5 項對應 T4.2 Task 1（`_job_events`／`_job_outcomes`／`_pipeline_queue` 的 `(tester_id, video_id)` key-isolation 直接驗證）。
+
+### T4.1 — Queue / History / Usage Quota Isolation + A-class Route Propagation
+
+- [x] Queue Store（`queue_store.py`）：同一 `video_id`、不同 tester 互不衝突；`list_items`／`get_item`／`update_item`／`remove_item` 皆正確依 `tester_id` 隔離；同一 tester 內仍正確擋重複 — PASS
+- [x] History Store（`history_store.py`）：`list_entries` 依 `tester_id` 隔離；overwrite-on-repeat 僅影響該 tester 自己的紀錄 — PASS
+- [x] Usage Quota（`app/observability/usage_quota.py`）：30秒快速學習 lifetime 計數與 `instance_id` 依 `tester_id` 獨立，不互相繼承或消耗彼此額度 — PASS
+- [x] A-class Route Propagation：現行 22 個受保護 Route（T3 範圍）呼叫 Queue／History／Usage Quota 時皆正確傳入 `tester_id`（`git diff` 逐行核對 + Grep 確認 `app/main.py` 現行內容無殘留舊簽名呼叫點）— PASS
+- [x] Local Mode 向下相容：`BETA_TOKENS` 未設定時 `get_tester_id()` 一律回傳 `"local"`，不檢查 Cookie／Query Param，不可能觸發 403 — PASS
+- [x] 舊格式資料遷移：`queue.json`／`history.json` 的舊 flat-list 格式、`usage_quota.json` 的舊 top-level 格式，皆正確整包遷移進 `"local"`；已是新格式的資料原樣通過不被誤處理 — PASS
+- [x] 真實 `outputs/*.json` 未受自動化驗證污染 — PASS
+
+**Human Test：** 沿用 2026-08-19 已完成之 Local Mode 真實 YouTube Human Test（見下方 T4.2 Task 1），本次 Closure 未重跑，不需要重跑（T4.1 Scope 為資料模型隔離，不涉及新的使用者可見流程）。
+
+**Test Date:** 2026-08-20　**Test Result:** PASS
+
+**已知限制（不阻擋本次 Closure，已記錄於 `TODO.md` Product Backlog）：** Transcript／Study Note `.md` 產出檔案仍是 video_id-scoped 共享 artifact，尚未依 `tester_id` 隔離；Job 狀態層（Queue／Job Event／Job Outcome，見下方 T4.2 Task 1）已正確隔離，但底層檔案本身仍共用，需獨立的未來 T4.x Task 處理。
+
+僅修改 `app/queue_store.py`、`app/history_store.py`、`app/observability/usage_quota.py`、`app/main.py`。未修改 Workflow、Stage Guard、Single Worker 流程本身、Transcript／Study Note／Export 檔案產生邏輯、Chrome Extension。
+
+### T4.2 Task 1 — Worker / Job Identity Migration
+
+`_pipeline_queue`（tuple 由 `(video_id, kind, enqueued_at)` 改為 `(tester_id, video_id, kind, enqueued_at)`）、`_job_events`／`_job_outcomes`（key 由 `video_id` 改為 `(tester_id, video_id)`），以及 `_record_job_outcome`／`_await_job`／`_pipeline_worker_loop`／`_enqueue_for_processing` 與 6 個 pipeline 函式（`_generate_transcript_for_item`、`_do_generate_transcript_for_item`、`_generate_study_note_for_item`、`_do_generate_study_note`、`_auto_generate_transcript`、`_retry_study_note_only`）及其 Route 呼叫點（`add_to_queue`、`start_processing`、`retry_processing`、`generate_transcript`、`generate_study_note`、`_resume_pending_queue_items`）全數改為攜帶 `tester_id`。
+
+- [x] `_job_events`／`_job_outcomes` 以 `(tester_id, video_id)` 為 key，兩位 tester 相同 `video_id` 的 outcome／event 完全獨立、不互相干擾（2026-08-20 直接對 dict 做 key-isolation 驗證）— PASS
+- [x] `_pipeline_queue` 4 欄 tuple 正確攜帶各自 `tester_id`，同一 `video_id` 不同 tester 的排隊項目不混淆 — PASS
+- [x] **T4-BLOCKER-01 已解除**：worker-internal pipeline 原本仍使用只認 `video_id` 的舊 `queue_store` 簽名（於 T4.1 Task 4 驗證時發現），採 Option B（直接遷移至 `(tester_id, video_id)` job identity，不建立相容 bridge）修正後不再重現 — PASS
+
+**Automated Verification（2026-08-19）：** 20/20 PASS（隔離 scratch script，monkeypatch `queue_store.QUEUE_FILE`／`_queue` 並 stub 所有外部 I/O，未觸碰真實 `outputs/*.json`），含真實 concurrent 兩 tester 同 `video_id` E2E via threads。2026-08-20 另以 dict-level 直接測試重新確認 `_job_events`／`_job_outcomes`／`_pipeline_queue` 的 key-isolation（計入上方 38 項總數內）。
+
+**Human Test（2026-08-19，PASS）：** Local Mode 真實 YouTube 影片，Queue → Downloading → Transcribing → Transcript Ready → Generating → Study Note Ready 全流程完成，Transcript／Study Note 內容正常，無 TypeError、無 worker crash、無卡死。
+
+**Test Date:** 2026-08-19　**Test Result:** PASS
+
+**尚未驗證（如實記錄，非 PASS）：** 雙 Tester、同一 `video_id` 的真實雙瀏覽器 Human Test **尚未執行**——目前僅有 automated concurrent（真實 thread）驗證，未有兩位真人同時在各自瀏覽器操作同一支影片的實測。不屬於 T4.1／T4.2 Task 1 的 mandatory acceptance criterion，待後續排期後另行驗收，本次不標記為 PASS。
+
+僅修改 `app/main.py`。未修改 `queue_store.py`／`history_store.py`／`usage_quota.py`（T4.1 已完成部分不重複變更）。
+
+### Sprint Result
+
+- [x] T4.1 Task 1-5 completed and accepted
+- [x] T4.2 Task 1 completed and accepted
+- [ ] T4.2（後續 Task）— Backlog，未開始
+
+---
+
 # MVP Acceptance
 
 The Lite MVP is complete when:
